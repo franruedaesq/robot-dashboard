@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
@@ -16,6 +16,7 @@ import { RobotSelectorPanel } from './components/RobotSelectorPanel';
 import { RealLiDARPanel } from './components/RealLiDARPanel';
 import { PlacementOverlay } from './components/PlacementOverlay';
 import { WorldEditorPanel } from './components/WorldEditorPanel';
+import { RobotArmPanel } from './components/RobotArmPanel';
 
 // ─────────────────────────────────────────────
 // Velocity helpers
@@ -103,6 +104,43 @@ function KeyboardHint() {
 }
 
 // ─────────────────────────────────────────────
+// Camera Manager for focusing robot
+// ─────────────────────────────────────────────
+function CameraManager({ pose, resetTrigger }: { pose: RobotPose, resetTrigger: number }) {
+    const { camera, controls } = useThree();
+    const [animating, setAnimating] = useState(false);
+    const targetCamPos = useRef(new THREE.Vector3());
+    const targetLookAt = useRef(new THREE.Vector3());
+
+    useEffect(() => {
+        if (resetTrigger > 0 && controls) {
+            // Isometric perspective relative to robot
+            targetCamPos.current.set(pose.x + 3, pose.y + 3, pose.z + 4);
+            targetLookAt.current.set(pose.x, pose.y + 0.5, pose.z);
+            setAnimating(true);
+        }
+    }, [resetTrigger, pose.x, pose.y, pose.z, controls]);
+
+    useFrame((_, delta) => {
+        if (animating && controls) {
+            const r_controls = controls as any;
+            camera.position.lerp(targetCamPos.current, 6 * delta);
+            r_controls.target.lerp(targetLookAt.current, 6 * delta);
+            r_controls.update();
+
+            if (
+                camera.position.distanceToSquared(targetCamPos.current) < 0.01 &&
+                r_controls.target.distanceToSquared(targetLookAt.current) < 0.01
+            ) {
+                setAnimating(false);
+            }
+        }
+    });
+
+    return null;
+}
+
+// ─────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────
 const defaultRobot = PRELOADED_ROBOTS[0];
@@ -120,6 +158,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const [showRealLidar, setShowRealLidar] = useState(false);
     const [simLidarEnabled, setSimLidarEnabled] = useState(false);
     const [simCamEnabled, setSimCamEnabled] = useState(false);
+    const [simJointsEnabled, setSimJointsEnabled] = useState(true);
     const [camHttpEndpoint, setCamHttpEndpoint] = useState('');
     const [camExpanded, setCamExpanded] = useState(false);
     const thumbnailCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -131,6 +170,9 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const [placingType, setPlacingType] = useState<ObstacleType | null>(null);
     const [placingDynamic, setPlacingDynamic] = useState(true);
     const [placingRotation, setPlacingRotation] = useState(0); // 0 = horizontal, PI/2 = vertical
+
+    // ── Camera controls ──────────────────────────────────────────────────────
+    const [cameraResetTrigger, setCameraResetTrigger] = useState(0);
 
     // ── Velocity / controls ──────────────────────────────────────────────────
     const [velocity, setVelocity] = useState<Velocity>(STOP);
@@ -241,19 +283,26 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     });
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', width: '100%', height: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', flex: 1, minHeight: 0, minWidth: 0, width: '100%' }}>
 
             {/* ── Left Side: 3D Canvas ────────────────────────────────────────── */}
             <div style={{
                 position: 'relative', flex: 1, minWidth: 0, height: '100%',
                 border: '2px solid #2a2a4a', borderRadius: '12px', overflow: 'hidden',
                 cursor: placingType ? 'crosshair' : 'default',
-            }}>
+            }}
+                onDoubleClick={(e) => {
+                    // Only trigger if double clicking the container itself (or canvas)
+                    // to avoid triggering when double clicking UI buttons
+                    if (e.target instanceof HTMLCanvasElement) {
+                        setCameraResetTrigger(c => c + 1);
+                    }
+                }}>
                 <Canvas
 
                     camera={{ position: [4, 4, 6], fov: 50 }}
                     shadows={{ type: THREE.PCFShadowMap }}
-                    style={{ height: '730px', background: 'linear-gradient(180deg, #0d0d1a 0%, #1a1a2e 100%)' }}
+                    style={{ height: '100%', background: 'linear-gradient(180deg, #0d0d1a 0%, #1a1a2e 100%)' }}
                 >
                     <ambientLight intensity={0.4} />
                     <directionalLight
@@ -269,6 +318,8 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                     />
                     <pointLight position={[-5, 5, -5]} intensity={0.5} color="#6644aa" />
 
+                    <CameraManager pose={pose} resetTrigger={cameraResetTrigger} />
+
                     <Physics key={worldKey} gravity={[0, -9.81, 0]}>
                         <World obstacles={obstacles} />
                         <RobotPhysicsBody
@@ -277,6 +328,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                             ros={ros}
                             simLidarEnabled={simLidarEnabled}
                             simCamEnabled={simCamEnabled}
+                            simJointsEnabled={simJointsEnabled}
                             thumbnailCanvasRef={thumbnailCanvasRef}
                             camHttpEndpoint={camHttpEndpoint || undefined}
                             expandedCanvasRef={expandedCanvasRef}
@@ -329,6 +381,18 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                     z: <b>{pose.z.toFixed(2)}</b> &nbsp;
                     θ: <b>{((pose.yaw * 180) / Math.PI).toFixed(1)}°</b>
                     &nbsp;<span style={{ color: '#3f6' }}>→ /sim_odom</span>
+
+                    <button
+                        onClick={() => setCameraResetTrigger(c => c + 1)}
+                        title="Centrar cámara (doble clic en 3D)"
+                        style={{
+                            marginLeft: 12, padding: '2px 6px', fontSize: '0.8rem', cursor: 'pointer',
+                            backgroundColor: '#1e3860', color: '#fff', border: '1px solid #3a6ea5',
+                            borderRadius: 4, transition: 'all 0.1s'
+                        }}
+                    >
+                        🎯
+                    </button>
                 </div>
 
                 {/* Robot info — top left */}
@@ -393,91 +457,96 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
 
             {/* ── Right Side: Controls ────────────────────────────────────────── */}
             <div style={{
-                width: '360px', flexShrink: 0,
-                display: 'flex', flexDirection: 'column', gap: '12px',
-                overflowY: 'auto', paddingRight: '8px'
+                width: '360px', flexShrink: 0, height: '100%',
+                overflowY: 'auto', paddingRight: '8px', paddingBottom: '16px',
+                boxSizing: 'border-box'
             }}>
-                {/* ── Sensor toggles ─────────────────────────────────────────────── */}
-                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: '#0a0f18', padding: '12px', borderRadius: '10px', border: '1px solid #1e2a4a' }}>
-                    <button {...panelBtn('📡 LiDAR Real (/scan)', showRealLidar, () => setShowRealLidar(v => !v))} />
-                    <button {...panelBtn('🔴 Sim LiDAR Rays', simLidarEnabled, () => setSimLidarEnabled(v => !v))} />
-                    <button {...panelBtn('📷 Sim Camera', simCamEnabled, () => setSimCamEnabled(v => !v))} />
-                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* ── Sensor toggles ─────────────────────────────────────────────── */}
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: '#0a0f18', padding: '12px', borderRadius: '10px', border: '1px solid #1e2a4a' }}>
+                        <button {...panelBtn('📡 LiDAR Real (/scan)', showRealLidar, () => setShowRealLidar(v => !v))} />
+                        <button {...panelBtn('🔴 Sim LiDAR Rays', simLidarEnabled, () => setSimLidarEnabled(v => !v))} />
+                        <button {...panelBtn('📷 Sim Camera', simCamEnabled, () => setSimCamEnabled(v => !v))} />
+                        <button {...panelBtn('🦾 Feedback (/joint_states)', simJointsEnabled, () => setSimJointsEnabled(v => !v))} />
+                    </div>
 
-                {/* ── Visual Vertical Offset ─────────────────────────────────────── */}
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
-                    <label>↕️ Ajuste Y (Robot Visual):</label>
-                    <input
-                        type="range"
-                        min="-1.0" max="1.0" step="0.01"
-                        value={visualYOffset}
-                        onChange={e => setVisualYOffset(parseFloat(e.target.value))}
-                        style={{ flex: 1, cursor: 'pointer' }}
+                    {/* ── Visual Vertical Offset ─────────────────────────────────────── */}
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
+                        <label>↕️ Ajuste Y (Robot Visual):</label>
+                        <input
+                            type="range"
+                            min="-1.0" max="1.0" step="0.01"
+                            value={visualYOffset}
+                            onChange={e => setVisualYOffset(parseFloat(e.target.value))}
+                            style={{ flex: 1, cursor: 'pointer' }}
+                        />
+                        <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{visualYOffset.toFixed(2)}m</span>
+                    </div>
+
+                    {/* ── Detected sensors from URDF ─────────────────────────────────── */}
+                    {detectedSensors.length > 0 && (
+                        <div style={{
+                            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+                            backgroundColor: '#080d1a', border: '1px solid #1e2a4a',
+                            borderRadius: 10, padding: '10px 14px', width: '100%',
+                            boxSizing: 'border-box',
+                        }}>
+                            <div style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#456', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                Sensores detectados en URDF
+                            </div>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+                                {detectedSensors.map(sensor => (
+                                    <div
+                                        key={sensor.type}
+                                        title={sensor.links.join('\n')}
+                                        style={{
+                                            display: 'flex', alignItems: 'center', gap: 5,
+                                            backgroundColor: '#0d1a2e', border: '1px solid #2a3a5a',
+                                            borderRadius: 20, padding: '4px 12px',
+                                            fontFamily: 'monospace', fontSize: '0.75rem', color: '#8be',
+                                            cursor: 'default',
+                                        }}
+                                    >
+                                        <span>{sensor.icon}</span>
+                                        <span>{sensor.label}</span>
+                                        <span style={{
+                                            backgroundColor: '#1e3860', color: '#5af',
+                                            borderRadius: 10, padding: '1px 7px', fontSize: '0.7rem',
+                                        }}>
+                                            {sensor.links.length}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {/* ── Robot Arm Controls ─────────────────────────────────────────── */}
+                    <RobotArmPanel parsed={parsed} ros={ros} />
+
+                    {/* ── World editor ───────────────────────────────────────────────── */}
+                    <WorldEditorPanel
+                        obstacles={obstacles}
+                        placingType={placingType}
+                        placingDynamic={placingDynamic}
+                        placingRotation={placingRotation}
+                        onSelectType={setPlacingType}
+                        onToggleDynamic={setPlacingDynamic}
+                        onToggleRotation={handleToggleRotation}
+                        onLoadScenario={handleLoadScenario}
+                        onClearAll={handleClearAll}
+                        onDeleteObstacle={handleDeleteObstacle}
                     />
-                    <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{visualYOffset.toFixed(2)}m</span>
+
+                    {/* ── Robot selector ─────────────────────────────────────────────── */}
+                    <RobotSelectorPanel onLoad={handleUrdfLoad} />
+
+                    {/* ── Real LiDAR panel ───────────────────────────────────────────── */}
+                    {showRealLidar && (
+                        <div style={{ backgroundColor: '#0d0d1a', border: '1px solid #2a2a4a', borderRadius: 10, padding: 12 }}>
+                            <RealLiDARPanel ros={ros} />
+                        </div>
+                    )}
                 </div>
-
-                {/* ── Detected sensors from URDF ─────────────────────────────────── */}
-                {detectedSensors.length > 0 && (
-                    <div style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-                        backgroundColor: '#080d1a', border: '1px solid #1e2a4a',
-                        borderRadius: 10, padding: '10px 14px', width: '100%',
-                        boxSizing: 'border-box',
-                    }}>
-                        <div style={{ fontFamily: 'monospace', fontSize: '0.7rem', color: '#456', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                            Sensores detectados en URDF
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
-                            {detectedSensors.map(sensor => (
-                                <div
-                                    key={sensor.type}
-                                    title={sensor.links.join('\n')}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: 5,
-                                        backgroundColor: '#0d1a2e', border: '1px solid #2a3a5a',
-                                        borderRadius: 20, padding: '4px 12px',
-                                        fontFamily: 'monospace', fontSize: '0.75rem', color: '#8be',
-                                        cursor: 'default',
-                                    }}
-                                >
-                                    <span>{sensor.icon}</span>
-                                    <span>{sensor.label}</span>
-                                    <span style={{
-                                        backgroundColor: '#1e3860', color: '#5af',
-                                        borderRadius: 10, padding: '1px 7px', fontSize: '0.7rem',
-                                    }}>
-                                        {sensor.links.length}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {/* ── World editor ───────────────────────────────────────────────── */}
-                <WorldEditorPanel
-                    obstacles={obstacles}
-                    placingType={placingType}
-                    placingDynamic={placingDynamic}
-                    placingRotation={placingRotation}
-                    onSelectType={setPlacingType}
-                    onToggleDynamic={setPlacingDynamic}
-                    onToggleRotation={handleToggleRotation}
-                    onLoadScenario={handleLoadScenario}
-                    onClearAll={handleClearAll}
-                    onDeleteObstacle={handleDeleteObstacle}
-                />
-
-                {/* ── Robot selector ─────────────────────────────────────────────── */}
-                <RobotSelectorPanel onLoad={handleUrdfLoad} />
-
-                {/* ── Real LiDAR panel ───────────────────────────────────────────── */}
-                {showRealLidar && (
-                    <div style={{ backgroundColor: '#0d0d1a', border: '1px solid #2a2a4a', borderRadius: 10, padding: 12 }}>
-                        <RealLiDARPanel ros={ros} />
-                    </div>
-                )}
             </div>
 
             {/* ── Expanded camera modal ───────────────────────────────────────── */}

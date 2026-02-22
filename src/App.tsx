@@ -20,9 +20,10 @@ function App() {
   return (
     <div style={{
       fontFamily: 'Inter, sans-serif',
-      backgroundColor: '#0d0d1a', minHeight: '100vh', color: 'white',
+      backgroundColor: '#0d0d1a', height: '100vh', color: 'white',
       padding: '16px', boxSizing: 'border-box',
-      display: 'flex', flexDirection: 'column'
+      display: 'flex', flexDirection: 'column',
+      overflow: 'hidden'
     }}>
       <div style={{ textAlign: 'center', marginBottom: '16px' }}>
         <h1 style={{ fontSize: '1.6rem', margin: '0 0 4px' }}>Panel de Control Robótico 🤖</h1>
@@ -31,11 +32,7 @@ function App() {
         </p>
       </div>
 
-      {ros && (
-        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <RobotDigitalTwin ros={ros} />
-        </div>
-      )}
+      {ros && <RobotDigitalTwin ros={ros} />}
     </div>
   );
 }

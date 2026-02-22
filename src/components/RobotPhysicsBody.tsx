@@ -1,4 +1,4 @@
-import { useRef, useCallback, forwardRef } from 'react';
+import { useRef, useCallback, forwardRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { RigidBody, type RapierRigidBody } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
@@ -14,11 +14,12 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     ros: ROSLIB.Ros | null;
     simLidarEnabled: boolean;
     simCamEnabled: boolean;
+    simJointsEnabled: boolean;
     thumbnailCanvasRef: React.RefObject<HTMLCanvasElement | null>;
     camHttpEndpoint?: string;
     expandedCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
     onPoseUpdate: (p: RobotPose) => void;
-}>(({ parsed, velocity, ros, simLidarEnabled, simCamEnabled, thumbnailCanvasRef, camHttpEndpoint, expandedCanvasRef, onPoseUpdate }, ref) => {
+}>(({ parsed, velocity, ros, simLidarEnabled, simCamEnabled, simJointsEnabled, thumbnailCanvasRef, camHttpEndpoint, expandedCanvasRef, onPoseUpdate }, ref) => {
     const internalRef = useRef<RapierRigidBody>(null);
     const wheelAngleRef = useRef({ left: 0, right: 0 });
     const gaitPhaseRef = useRef(0);
@@ -94,6 +95,28 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     // Spawn slightly above the floor so no initial collider overlap.
     // Gravity (re-enabled) brings the robot down to the floor naturally.
     const spawnY = Math.max(0.3, parsed?.spawnY ?? 0.5);
+
+    // ── Subscribe to /joint_states ──────────────────────────────────────────
+    useEffect(() => {
+        if (!ros || !parsed?.root || !simJointsEnabled) return;
+        const topic = new ROSLIB.Topic({
+            ros,
+            name: '/joint_states',
+            messageType: 'sensor_msgs/JointState',
+        });
+        const cb = (msg: any) => {
+            const joints = (parsed.root as any).joints as Record<string, any> | undefined;
+            if (!joints || !msg.name || !msg.position) return;
+            msg.name.forEach((name: string, i: number) => {
+                const j = joints[name];
+                if (j && typeof j.setJointValue === 'function') {
+                    j.setJointValue(msg.position[i]);
+                }
+            });
+        };
+        topic.subscribe(cb);
+        return () => topic.unsubscribe(cb);
+    }, [ros, parsed]);
 
     return (
         <>

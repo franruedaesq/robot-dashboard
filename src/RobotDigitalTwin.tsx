@@ -543,10 +543,15 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                     {/* ── Robot selector ─────────────────────────────────────────────── */}
                     <RobotSelectorPanel onLoad={handleUrdfLoad} />
 
-                    {/* ── Real LiDAR panel ───────────────────────────────────────────── */}
+                    {/* ── LiDAR panels ───────────────────────────────────────────── */}
                     {showRealLidar && (
                         <div style={{ backgroundColor: '#0d0d1a', border: '1px solid #2a2a4a', borderRadius: 10, padding: 12 }}>
-                            <RealLiDARPanel ros={ros} />
+                            <RealLiDARPanel ros={ros} topicName="/scan" title="🟢 /scan — Real LiDAR" />
+                        </div>
+                    )}
+                    {simLidarEnabled && (
+                        <div style={{ backgroundColor: '#0d0d1a', border: '1px solid #c0392b', borderRadius: 10, padding: 12 }}>
+                            <RealLiDARPanel ros={ros} topicName="/sim_scan" title="🔴 /sim_scan — Sim LiDAR" />
                         </div>
                     )}
                 </div>

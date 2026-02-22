@@ -5,7 +5,7 @@ import { DynamicObstacle } from './DynamicObstacle';
 
 export function World({ obstacles = [] }: { obstacles?: ObstacleConfig[] }) {
     return (
-        <>
+        <group name="sim_environment">
             {/* Floor */}
             <RigidBody type="fixed" colliders="cuboid">
                 <mesh receiveShadow position={[0, -0.05, 0]}>
@@ -26,6 +26,6 @@ export function World({ obstacles = [] }: { obstacles?: ObstacleConfig[] }) {
             {obstacles.map(obs => (
                 <DynamicObstacle key={obs.id} obs={obs} />
             ))}
-        </>
+        </group>
     );
 }

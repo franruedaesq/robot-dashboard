@@ -6,6 +6,12 @@ import * as THREE from 'three';
 import type { RobotPose } from '../types';
 import { SENSOR_HZ, LIDAR_RAYS, LIDAR_MAX_DIST } from '../constants';
 
+function gaussianRandom(mean = 0, stdev = 1) {
+    const u = 1 - Math.random();
+    const v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v) * stdev + mean;
+}
+
 export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
     bodyRef: React.RefObject<RapierRigidBody | null>;
     ros: ROSLIB.Ros | null;
@@ -13,9 +19,7 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
     onPoseUpdate?: (p: RobotPose) => void;
 }) {
     const { scene } = useThree();
-    const raycaster = useMemo(() => new THREE.Raycaster(), []);
     const lastTime = useRef(0);
-    const hitPointsRef = useRef<THREE.Points | null>(null);
     const topicRef = useRef<ROSLIB.Topic<any> | null>(null);
 
     useEffect(() => {
@@ -24,16 +28,7 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
         return () => { topicRef.current = null; };
     }, [ros]);
 
-    useEffect(() => {
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(LIDAR_RAYS * 3), 3));
-        const mat = new THREE.PointsMaterial({ color: '#ff4444', size: 0.05, sizeAttenuation: true });
-        const pts = new THREE.Points(geo, mat);
-        pts.visible = false;
-        scene.add(pts);
-        hitPointsRef.current = pts;
-        return () => { scene.remove(pts); geo.dispose(); mat.dispose(); };
-    }, [scene]);
+    const raycaster = useMemo(() => new THREE.Raycaster(), []);
 
     useFrame(({ clock }) => {
         const body = bodyRef.current;
@@ -43,9 +38,6 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
         const yaw = 2 * Math.atan2(r.y, r.w);
         onPoseUpdate?.({ x: t.x, y: t.y, z: t.z, yaw });
 
-        const pts = hitPointsRef.current;
-        if (!pts) return;
-        pts.visible = enabled;
         if (!enabled) return;
 
         if (clock.elapsedTime - lastTime.current < 1 / SENSOR_HZ) return;
@@ -53,23 +45,33 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
 
         const origin = new THREE.Vector3(t.x, t.y + 0.18, t.z);
         const ranges: number[] = [];
-        const posAttr = pts.geometry.attributes.position as THREE.BufferAttribute;
 
         for (let i = 0; i < LIDAR_RAYS; i++) {
             const angle = yaw + (i * Math.PI * 2) / LIDAR_RAYS;
             const dir = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+
             raycaster.set(origin, dir);
             raycaster.far = LIDAR_MAX_DIST;
-            const real = raycaster.intersectObjects(scene.children, true).filter(h => h.object !== pts);
-            if (real.length > 0) {
-                ranges.push(real[0].distance);
-                posAttr.setXYZ(i, real[0].point.x, real[0].point.y, real[0].point.z);
-            } else {
-                ranges.push(LIDAR_MAX_DIST);
-                posAttr.setXYZ(i, origin.x + dir.x * LIDAR_MAX_DIST, origin.y, origin.z + dir.z * LIDAR_MAX_DIST);
+
+            // Only intersect the sim environment group to skip checking the extremely complex robot URDF model recursively 360 times
+            const simEnv = scene.getObjectByName('sim_environment');
+            const targetObjects = simEnv ? simEnv.children : scene.children;
+
+            const real = raycaster.intersectObjects(targetObjects, true).filter(h => h.distance > 0.1);
+
+            // Sensor imperfection: 0.5% chance ray gets lost and returns max dist
+            const dropped = Math.random() < 0.005;
+
+            let dist = dropped ? LIDAR_MAX_DIST : (real.length > 0 ? real[0].distance : LIDAR_MAX_DIST);
+
+            // Sensor noise: Add 1% distance-proportional gaussian noise
+            if (dist < LIDAR_MAX_DIST) {
+                dist = gaussianRandom(dist, dist * 0.01);
             }
+
+            ranges.push(dist);
         }
-        posAttr.needsUpdate = true;
+
         topicRef.current?.publish({
             header: { frame_id: 'sim_lidar' },
             angle_min: 0, angle_max: Math.PI * 2,

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import * as ROSLIB from 'roslib';
 import RobotDigitalTwin from './RobotDigitalTwin';
+import { useIsMobile } from './utils/media';
 
 function App() {
   const [status, setStatus] = useState('Desconectado 🔴');
   const [ros, setRos] = useState<ROSLIB.Ros | null>(null);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const conn = new ROSLIB.Ros({ url: 'ws://localhost:9090' });
@@ -20,8 +22,9 @@ function App() {
   return (
     <div style={{
       fontFamily: 'Inter, sans-serif',
-      backgroundColor: '#0d0d1a', height: '100vh', color: 'white',
-      padding: '16px', boxSizing: 'border-box',
+      backgroundColor: '#0d0d1a',
+      height: '100vh', minHeight: '100vh', color: 'white',
+      padding: isMobile ? '8px' : '16px', boxSizing: 'border-box',
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden'
     }}>

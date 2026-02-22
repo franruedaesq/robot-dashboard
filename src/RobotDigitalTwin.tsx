@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import type { RobotPose, PackageMap, ObstacleConfig, ObstacleType, ScenarioPreset } from './types';
 import { parseUrdf, parseSensors } from './utils/urdf';
 import type { DetectedSensor } from './utils/urdf';
+import { useIsMobile } from './utils/media';
 import { PRELOADED_ROBOTS } from './robots/catalog';
 import { SPAWN_Y, DEFAULT_SCALE, DEFAULT_COLOR } from './scenarios/presets';
 import { World } from './components/World';
@@ -39,7 +40,7 @@ function keysToVelocity(held: Set<string>): Velocity {
 // ─────────────────────────────────────────────
 // Floating D-pad overlay
 // ─────────────────────────────────────────────
-function DPad({ onDown, onUp }: { onDown: (v: Velocity) => void; onUp: () => void }) {
+function DPad({ onDown, onUp, style }: { onDown: (v: Velocity) => void; onUp: () => void; style?: React.CSSProperties }) {
     const btn = (icon: string, v: Velocity) => (
         <button
             onPointerDown={e => { e.preventDefault(); onDown(v); }}
@@ -73,6 +74,7 @@ function DPad({ onDown, onUp }: { onDown: (v: Velocity) => void; onUp: () => voi
             gridTemplateColumns: 'repeat(3, 44px)',
             gridTemplateRows: 'repeat(3, 44px)',
             gap: 4,
+            ...style
         }}>
             <span />{btn('⬆️', { linear: 2.0, angular: 0.0 })}<span />
             {btn('↩️', { linear: 0.5, angular: 2.0 })}{stopBtn}{btn('↪️', { linear: 0.5, angular: -2.0 })}
@@ -114,9 +116,9 @@ function CameraManager({ pose, resetTrigger }: { pose: RobotPose, resetTrigger: 
 
     useEffect(() => {
         if (resetTrigger > 0 && controls) {
-            // Isometric perspective relative to robot
-            targetCamPos.current.set(pose.x + 3, pose.y + 3, pose.z + 4);
-            targetLookAt.current.set(pose.x, pose.y + 0.5, pose.z);
+            // Isometric perspective relative to robot (closer look)
+            targetCamPos.current.set(pose.x + 1.5, pose.y + 1.5, pose.z + 2.0);
+            targetLookAt.current.set(pose.x, pose.y + 0.3, pose.z);
             setAnimating(true);
         }
     }, [resetTrigger, pose.x, pose.y, pose.z, controls]);
@@ -146,6 +148,7 @@ function CameraManager({ pose, resetTrigger }: { pose: RobotPose, resetTrigger: 
 const defaultRobot = PRELOADED_ROBOTS[0];
 
 export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
+    const isMobile = useIsMobile();
     // ── URDF / robot state ───────────────────────────────────────────────────
     const [urdfText, setUrdfText] = useState<string>(defaultRobot.urdf);
     const [pkgMap, setPkgMap] = useState<PackageMap>(defaultRobot.pkgMap);
@@ -283,13 +286,13 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     });
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'row', gap: '16px', flex: 1, minHeight: 0, minWidth: 0, width: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '8px' : '16px', flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%' }}>
 
             {/* ── Left Side: 3D Canvas ────────────────────────────────────────── */}
             <div style={{
-                position: 'relative', flex: 1, minWidth: 0, height: '100%',
+                position: 'relative', flex: isMobile ? 'none' : 1, minWidth: 0, height: isMobile ? '45vh' : '100%', flexShrink: 0,
                 border: '2px solid #2a2a4a', borderRadius: '12px', overflow: 'hidden',
-                cursor: placingType ? 'crosshair' : 'default',
+                cursor: placingType ? 'crosshair' : 'grab',
             }}
                 onDoubleClick={(e) => {
                     // Only trigger if double clicking the container itself (or canvas)
@@ -352,7 +355,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                 <DPad onDown={sendVel} onUp={stop} />
 
                 {/* Keyboard hint */}
-                <KeyboardHint />
+                {/* {!isMobile && <KeyboardHint />} */}
 
                 {/* Placement mode banner */}
                 {placingType && (
@@ -457,8 +460,8 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
 
             {/* ── Right Side: Controls ────────────────────────────────────────── */}
             <div style={{
-                width: '360px', flexShrink: 0, height: '100%',
-                overflowY: 'auto', paddingRight: '8px', paddingBottom: '16px',
+                width: isMobile ? '100%' : '360px', flex: isMobile ? 1 : 'none', flexShrink: 0, height: isMobile ? 'auto' : '100%',
+                overflowY: 'auto', paddingRight: isMobile ? '0' : '8px', paddingBottom: '16px',
                 boxSizing: 'border-box'
             }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -565,14 +568,20 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                         style={{
                             border: '2px solid #3498db', borderRadius: 10, overflow: 'hidden',
                             boxShadow: '0 0 40px #3498db66',
+                            width: isMobile ? '95vw' : 'auto', maxWidth: 640
                         }}
                     >
                         <div style={{ backgroundColor: '#0d0d1a', padding: '4px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontFamily: 'monospace', fontSize: '0.72rem', color: '#3498db' }}>
                             <span>Sim Camera — robot POV</span>
                             <button onClick={() => setCamExpanded(false)} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, padding: '0 2px' }}>✕</button>
                         </div>
-                        <canvas ref={expandedCanvasRef} width={640} height={480} style={{ display: 'block' }} />
+                        <canvas ref={expandedCanvasRef} width={640} height={480} style={{ display: 'block', width: '100%', height: 'auto', aspectRatio: '4/3' }} />
                     </div>
+                    {isMobile && (
+                        <div style={{ marginTop: '20px', pointerEvents: 'auto' }} onClick={e => e.stopPropagation()}>
+                            <DPad onDown={sendVel} onUp={stop} style={{ position: 'relative', bottom: 0, left: 0 }} />
+                        </div>
+                    )}
                     <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: '0.65rem', color: 'rgba(100,140,180,0.6)' }}>
                         click outside or press Esc to close
                     </div>

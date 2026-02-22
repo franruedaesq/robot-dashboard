@@ -99,13 +99,14 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     // ── Subscribe to /joint_states ──────────────────────────────────────────
     useEffect(() => {
         if (!ros || !parsed?.root || !simJointsEnabled) return;
+        const root = parsed.root;
         const topic = new ROSLIB.Topic({
             ros,
             name: '/joint_states',
             messageType: 'sensor_msgs/JointState',
         });
         const cb = (msg: any) => {
-            const joints = (parsed.root as any).joints as Record<string, any> | undefined;
+            const joints = (root as any).joints as Record<string, any> | undefined;
             if (!joints || !msg.name || !msg.position) return;
             msg.name.forEach((name: string, i: number) => {
                 const j = joints[name];
@@ -116,7 +117,7 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
         };
         topic.subscribe(cb);
         return () => topic.unsubscribe(cb);
-    }, [ros, parsed]);
+    }, [ros, parsed?.root, simJointsEnabled]);
 
     return (
         <>

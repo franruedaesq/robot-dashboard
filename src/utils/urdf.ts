@@ -92,44 +92,44 @@ export function parseUrdf(
 }
 
 /**
- * Walk the parsed URDF object tree and apply colour + PBR properties from
- * the URDF <material> blocks. Works for any robot.
+ * Walk the parsed URDF object tree and update materials to look better in the environment.
+ * urdf-loader natively reads <material> tags (including <color> and <texture>) and assigns
+ * them to `obj.material`, usually as a MeshPhongMaterial for STLs/primitives.
  */
-export function applyUrdfMaterialsGeneric(root: THREE.Object3D, urdfText: string) {
-    const colorMap: Record<string, string> = {};
-    const matRe = /<material\s+name=["']([^"']+)["'][^>]*>\s*<color\s+rgba=["']([^"']+)["']/g;
-    let m: RegExpExecArray | null;
-    while ((m = matRe.exec(urdfText)) !== null) {
-        const [, matName, rgba] = m;
-        const [r, g, b] = rgba.trim().split(/\s+/).map(Number);
-        colorMap[matName] = rgbToHex(r, g, b);
-    }
-
-    const fallback = '#555555';
-
+export function applyUrdfMaterialsGeneric(root: THREE.Object3D, _urdfText: string) {
     root.traverse((obj) => {
         if (!(obj instanceof THREE.Mesh)) return;
 
-        const matName: string | undefined = obj.userData?.urdfMaterial ?? obj.userData?.material;
-        const hex = (matName && colorMap[matName]) ?? fallback;
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
 
-        const mat = obj.material as THREE.MeshStandardMaterial;
-        mat.color.set(hex);
-        mat.roughness = 0.65;
-        mat.metalness = 0.20;
-        mat.needsUpdate = true;
+        materials.forEach(mat => {
+            if ((mat as any).isMeshPhongMaterial) {
+                const stdMat = new THREE.MeshStandardMaterial({
+                    name: mat.name,
+                    color: (mat as any).color,
+                    map: (mat as any).map,
+                    transparent: mat.transparent,
+                    opacity: mat.opacity,
+                    roughness: 0.65,
+                    metalness: 0.20,
+                    side: mat.side,
+                });
+
+                if (Array.isArray(obj.material)) {
+                    const idx = obj.material.indexOf(mat);
+                    if (idx !== -1) obj.material[idx] = stdMat;
+                } else {
+                    obj.material = stdMat;
+                }
+            } else {
+                if ('roughness' in mat) (mat as any).roughness = 0.65;
+                if ('metalness' in mat) (mat as any).metalness = 0.20;
+            }
+        });
 
         obj.castShadow = true;
         obj.receiveShadow = true;
     });
-}
-
-export function rgbToHex(r: number, g: number, b: number): string {
-    const toHex = (v: number) =>
-        Math.round(Math.min(1, Math.max(0, v)) * 255)
-            .toString(16)
-            .padStart(2, '0');
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
 /** Find the first joint whose name contains the given keyword */

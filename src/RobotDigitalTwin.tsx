@@ -86,24 +86,24 @@ function DPad({ onDown, onUp, style }: { onDown: (v: Velocity) => void; onUp: ()
 // ─────────────────────────────────────────────
 // Keyboard hint overlay
 // ─────────────────────────────────────────────
-function KeyboardHint() {
-    return (
-        <div style={{
-            position: 'absolute', bottom: 8, left: 128,
-            fontFamily: 'monospace', fontSize: '0.65rem',
-            color: 'rgba(100,140,180,0.8)',
-            backgroundColor: 'rgba(13,18,32,0.75)',
-            border: '1px solid rgba(42,58,90,0.6)',
-            borderRadius: 6, padding: '5px 8px', lineHeight: 1.7,
-            pointerEvents: 'none', backdropFilter: 'blur(4px)',
-        }}>
-            W / ↑ &nbsp; adelante<br />
-            S / ↓ &nbsp; atrás<br />
-            A / ← &nbsp; girar izq.<br />
-            D / → &nbsp; girar der.
-        </div>
-    );
-}
+// function KeyboardHint() {
+//     return (
+//         <div style={{
+//             position: 'absolute', bottom: 8, left: 128,
+//             fontFamily: 'monospace', fontSize: '0.65rem',
+//             color: 'rgba(100,140,180,0.8)',
+//             backgroundColor: 'rgba(13,18,32,0.75)',
+//             border: '1px solid rgba(42,58,90,0.6)',
+//             borderRadius: 6, padding: '5px 8px', lineHeight: 1.7,
+//             pointerEvents: 'none', backdropFilter: 'blur(4px)',
+//         }}>
+//             W / ↑ &nbsp; adelante<br />
+//             S / ↓ &nbsp; atrás<br />
+//             A / ← &nbsp; girar izq.<br />
+//             D / → &nbsp; girar der.
+//         </div>
+//     );
+// }
 
 // ─────────────────────────────────────────────
 // Camera Manager for focusing robot

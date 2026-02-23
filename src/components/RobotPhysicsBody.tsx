@@ -8,6 +8,7 @@ import { findJoint } from '../utils/urdf';
 import { OdometryPublisher } from './OdometryPublisher';
 import { SimLiDAR } from './SimLiDAR';
 import { SimCamera } from './SimCamera';
+import { tfTree, Transform, Vec3, Quaternion } from '../utils/tf';
 
 export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     parsed: (ParsedRobot & { visualYOffset?: number }) | null;
@@ -38,11 +39,27 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
 
         // 1. Physics control — let Rapier own Y (gravity + floor contact)
         body.setAngvel({ x: 0, y: velocity.angular, z: 0 }, true);
+        const t = body.translation();
         const r = body.rotation();
         const yaw = 2 * Math.atan2(r.y, r.w);
         const vx = Math.cos(yaw) * velocity.linear;
         const vz = -Math.sin(yaw) * velocity.linear;
         body.setLinvel({ x: vx, y: body.linvel().y, z: vz }, true);
+
+        // Update tf-engine with the robot's base_link pose
+        const frameId = `robot_${robotIndex}/base_link`;
+        if (!tfTree.hasFrame(frameId)) {
+            tfTree.addFrame(frameId, "world");
+        }
+
+        tfTree.setTransform(
+            frameId,
+            new Transform(
+                new Vec3(t.x, t.y, t.z),
+                new Quaternion(r.x, r.y, r.z, r.w)
+            ),
+            Date.now()
+        );
 
         // 2. Joint animation
         if (!parsed?.root) return;

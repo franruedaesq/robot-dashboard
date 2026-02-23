@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import * as ROSLIB from 'roslib';
 import type { ParsedRobot } from '../types';
+import { getRobotConfig, updateRobotConfig } from '../utils/storage';
 
 export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros: ROSLIB.Ros | null }) {
     // Extract joints that can be controlled (revolute, continuous, prismatic)
@@ -35,15 +36,24 @@ export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros
         setValues(prev => {
             const next = { ...prev };
             let changed = false;
+            const config = getRobotConfig(parsed?.name);
+            const storedJoints = config.joints || {};
+
             joints.forEach(j => {
-                if (!(j.name in next)) {
-                    next[j.name] = 0;
+                const storedVal = storedJoints[j.name] ?? 0;
+                if (next[j.name] !== storedVal || !(j.name in prev)) {
+                    next[j.name] = storedVal;
                     changed = true;
+                    // Apply visual update directly here so the model snaps to the stored position
+                    const jointsMap = (parsed?.root as any)?.joints;
+                    if (jointsMap && jointsMap[j.name]) {
+                        jointsMap[j.name].setJointValue(storedVal);
+                    }
                 }
             });
             return changed ? next : prev;
         });
-    }, [joints]);
+    }, [joints, parsed]);
 
     // Publish trajectory command to ROS
     const publishTrajectory = useCallback((name: string, val: number) => {
@@ -91,6 +101,10 @@ export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros
                                 if (jointsMap && jointsMap[j.name]) {
                                     jointsMap[j.name].setJointValue(v);
                                 }
+
+                                const config = getRobotConfig(parsed?.name);
+                                const newJoints = { ...(config.joints || {}), [j.name]: v };
+                                updateRobotConfig(parsed?.name, { joints: newJoints });
                             }}
                             style={{ flex: 1, cursor: 'pointer' }}
                         />

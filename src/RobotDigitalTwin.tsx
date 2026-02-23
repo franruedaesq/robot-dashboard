@@ -20,6 +20,7 @@ import { WorldEditorPanel } from './components/WorldEditorPanel';
 import { RobotArmPanel } from './components/RobotArmPanel';
 import { HeadlessContext } from './contexts/HeadlessContext';
 import { HeadlessEngine } from './components/HeadlessEngine';
+import { getRobotConfig, updateRobotConfig } from './utils/storage';
 
 // ─────────────────────────────────────────────
 // Velocity helpers
@@ -81,28 +82,6 @@ function DPad({ onDown, onUp, style }: { onDown: (v: Velocity) => void; onUp: ()
             <span />{btn('⬆️', { linear: 2.0, angular: 0.0 })}<span />
             {btn('↩️', { linear: 0.5, angular: 2.0 })}{stopBtn}{btn('↪️', { linear: 0.5, angular: -2.0 })}
             <span />{btn('⬇️', { linear: -2.0, angular: 0.0 })}<span />
-        </div>
-    );
-}
-
-// ─────────────────────────────────────────────
-// Keyboard hint overlay
-// ─────────────────────────────────────────────
-function KeyboardHint() {
-    return (
-        <div style={{
-            position: 'absolute', bottom: 8, left: 128,
-            fontFamily: 'monospace', fontSize: '0.65rem',
-            color: 'rgba(100,140,180,0.8)',
-            backgroundColor: 'rgba(13,18,32,0.75)',
-            border: '1px solid rgba(42,58,90,0.6)',
-            borderRadius: 6, padding: '5px 8px', lineHeight: 1.7,
-            pointerEvents: 'none', backdropFilter: 'blur(4px)',
-        }}>
-            W / ↑ &nbsp; adelante<br />
-            S / ↓ &nbsp; atrás<br />
-            A / ← &nbsp; girar izq.<br />
-            D / → &nbsp; girar der.
         </div>
     );
 }
@@ -271,6 +250,31 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
         setForwardAngle(fwdAngle ?? 0);
         setVisualYOffset(vyOffset ?? 0);
     }, []);
+
+    // Load config from localStorage whenever the parsed robot changes
+    useEffect(() => {
+        if (parsed?.name) {
+            const config = getRobotConfig(parsed.name);
+            if (config.visualYOffset !== undefined) setVisualYOffset(config.visualYOffset);
+            if (config.cameraFollow !== undefined) setCameraFollow(config.cameraFollow);
+            if (config.cameraHeightOffset !== undefined) setCameraHeightOffset(config.cameraHeightOffset);
+        }
+    }, [parsed?.name]);
+
+    const handleVisualYOffsetChange = (val: number) => {
+        setVisualYOffset(val);
+        updateRobotConfig(parsed?.name, { visualYOffset: val });
+    };
+
+    const handleCameraFollowChange = (val: boolean) => {
+        setCameraFollow(val);
+        updateRobotConfig(parsed?.name, { cameraFollow: val });
+    };
+
+    const handleCameraHeightChange = (val: number) => {
+        setCameraHeightOffset(val);
+        updateRobotConfig(parsed?.name, { cameraHeightOffset: val });
+    };
 
     // ── World editor actions ─────────────────────────────────────────────────
     const handleLoadScenario = useCallback((preset: ScenarioPreset) => {
@@ -564,7 +568,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                             type="range"
                             min="-1.0" max="1.0" step="0.01"
                             value={visualYOffset}
-                            onChange={e => setVisualYOffset(parseFloat(e.target.value))}
+                            onChange={e => handleVisualYOffsetChange(parseFloat(e.target.value))}
                             style={{ flex: 1, cursor: 'pointer' }}
                         />
                         <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{visualYOffset.toFixed(2)}m</span>
@@ -574,7 +578,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                                <input type="checkbox" checked={cameraFollow} onChange={e => setCameraFollow(e.target.checked)} />
+                                <input type="checkbox" checked={cameraFollow} onChange={e => handleCameraFollowChange(e.target.checked)} />
                                 🎥 Seguir al Robot
                             </label>
                             <button
@@ -594,7 +598,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                                 type="range"
                                 min="-1.5" max="1.5" step="0.01"
                                 value={cameraHeightOffset}
-                                onChange={e => setCameraHeightOffset(parseFloat(e.target.value))}
+                                onChange={e => handleCameraHeightChange(parseFloat(e.target.value))}
                                 style={{ flex: 1, cursor: 'pointer' }}
                             />
                             <span style={{ width: '40px', fontFamily: 'monospace', textAlign: 'right' }}>{cameraHeightOffset.toFixed(2)}m</span>

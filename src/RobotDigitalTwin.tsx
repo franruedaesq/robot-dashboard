@@ -108,20 +108,24 @@ function KeyboardHint() {
 // ─────────────────────────────────────────────
 // Camera Manager for focusing robot
 // ─────────────────────────────────────────────
-function CameraManager({ pose, resetTrigger }: { pose: RobotPose, resetTrigger: number }) {
+// ─────────────────────────────────────────────
+// Camera Manager for focusing robot
+// ─────────────────────────────────────────────
+function CameraManager({ pose, resetTrigger, heightOffset = 0 }: { pose: RobotPose, resetTrigger: number, heightOffset?: number }) {
     const { camera, controls } = useThree();
     const [animating, setAnimating] = useState(false);
     const targetCamPos = useRef(new THREE.Vector3());
     const targetLookAt = useRef(new THREE.Vector3());
 
     useEffect(() => {
-        if (resetTrigger > 0 && controls) {
-            // Isometric perspective relative to robot (closer look)
-            targetCamPos.current.set(pose.x + 1.5, pose.y + 1.5, pose.z + 2.0);
-            targetLookAt.current.set(pose.x, pose.y + 0.3, pose.z);
+        if ((resetTrigger > 0 || heightOffset !== undefined) && controls) {
+            // Isometric perspective relative to robot
+            // We incorporate heightOffset into both the eye and the target
+            targetCamPos.current.set(pose.x + 1.5, pose.y + 1.5 + heightOffset, pose.z + 2.0);
+            targetLookAt.current.set(pose.x, pose.y + 0.3 + heightOffset, pose.z);
             setAnimating(true);
         }
-    }, [resetTrigger, pose.x, pose.y, pose.z, controls]);
+    }, [resetTrigger, pose.x, pose.y, pose.z, heightOffset, controls]);
 
     useFrame((_, delta) => {
         if (animating && controls) {
@@ -131,8 +135,8 @@ function CameraManager({ pose, resetTrigger }: { pose: RobotPose, resetTrigger: 
             r_controls.update();
 
             if (
-                camera.position.distanceToSquared(targetCamPos.current) < 0.01 &&
-                r_controls.target.distanceToSquared(targetLookAt.current) < 0.01
+                camera.position.distanceToSquared(targetCamPos.current) < 0.001 &&
+                r_controls.target.distanceToSquared(targetLookAt.current) < 0.001
             ) {
                 setAnimating(false);
             }
@@ -176,6 +180,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
 
     // ── Camera controls ──────────────────────────────────────────────────────
     const [cameraResetTrigger, setCameraResetTrigger] = useState(0);
+    const [cameraHeightOffset, setCameraHeightOffset] = useState(0);
 
     // ── Velocity / controls ──────────────────────────────────────────────────
     const [velocity, setVelocity] = useState<Velocity>(STOP);
@@ -321,7 +326,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                     />
                     <pointLight position={[-5, 5, -5]} intensity={0.5} color="#6644aa" />
 
-                    <CameraManager pose={pose} resetTrigger={cameraResetTrigger} />
+                    <CameraManager pose={pose} resetTrigger={cameraResetTrigger} heightOffset={cameraHeightOffset} />
 
                     <Physics key={worldKey} gravity={[0, -9.81, 0]}>
                         <World obstacles={obstacles} />
@@ -484,6 +489,19 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                             style={{ flex: 1, cursor: 'pointer' }}
                         />
                         <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{visualYOffset.toFixed(2)}m</span>
+                    </div>
+
+                    {/* ── Camera Elevation ───────────────────────────────────────────── */}
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
+                        <label>🎥 Elevación Cámara (Vertical):</label>
+                        <input
+                            type="range"
+                            min="-1.5" max="1.5" step="0.01"
+                            value={cameraHeightOffset}
+                            onChange={e => setCameraHeightOffset(parseFloat(e.target.value))}
+                            style={{ flex: 1, cursor: 'pointer' }}
+                        />
+                        <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{cameraHeightOffset.toFixed(2)}m</span>
                     </div>
 
                     {/* ── Detected sensors from URDF ─────────────────────────────────── */}

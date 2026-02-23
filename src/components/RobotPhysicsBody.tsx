@@ -1,5 +1,6 @@
 import { useRef, useCallback, forwardRef, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
+
+import { useSimulationLoop } from '../contexts/HeadlessContext';
 import { RigidBody, type RapierRigidBody } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import type { ParsedRobot, RobotPose } from '../types';
@@ -18,8 +19,9 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     thumbnailCanvasRef: React.RefObject<HTMLCanvasElement | null>;
     camHttpEndpoint?: string;
     expandedCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
-    onPoseUpdate: (p: RobotPose) => void;
-}>(({ parsed, velocity, ros, simLidarEnabled, simCamEnabled, simJointsEnabled, thumbnailCanvasRef, camHttpEndpoint, expandedCanvasRef, onPoseUpdate }, ref) => {
+    onPoseUpdate?: (p: RobotPose) => void;
+    robotIndex?: number;
+}>(({ parsed, velocity, ros, simLidarEnabled, simCamEnabled, simJointsEnabled, thumbnailCanvasRef, camHttpEndpoint, expandedCanvasRef, onPoseUpdate, robotIndex = 0 }, ref) => {
     const internalRef = useRef<RapierRigidBody>(null);
     const wheelAngleRef = useRef({ left: 0, right: 0 });
     const gaitPhaseRef = useRef(0);
@@ -30,7 +32,7 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
         else if (ref) (ref as React.RefObject<RapierRigidBody | null>).current = body;
     }, [ref]);
 
-    useFrame((_, delta) => {
+    useSimulationLoop((delta) => {
         const body = internalRef.current;
         if (!body) return;
 
@@ -100,9 +102,10 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     useEffect(() => {
         if (!ros || !parsed?.root || !simJointsEnabled) return;
         const root = parsed.root;
+        const topicName = robotIndex === 0 ? '/joint_states' : `/robot_${robotIndex}/joint_states`;
         const topic = new ROSLIB.Topic({
             ros,
-            name: '/joint_states',
+            name: topicName,
             messageType: 'sensor_msgs/JointState',
         });
         const cb = (msg: any) => {
@@ -128,7 +131,7 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
                 enabledRotations={[false, true, false]}
                 linearDamping={4}
                 angularDamping={4}
-                position={[0, spawnY, 0]}
+                position={[0, spawnY, robotIndex * 1.5]}
             >
                 {parsed ? (
                     <primitive object={parsed.root} dispose={null} position={[0, parsed.visualYOffset ?? 0, 0]} />
@@ -139,8 +142,8 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
                     </mesh>
                 )}
             </RigidBody>
-            <OdometryPublisher bodyRef={internalRef} ros={ros} />
-            <SimLiDAR bodyRef={internalRef} ros={ros} enabled={simLidarEnabled} onPoseUpdate={onPoseUpdate} />
+            <OdometryPublisher bodyRef={internalRef} ros={ros} robotIndex={robotIndex} />
+            <SimLiDAR bodyRef={internalRef} ros={ros} enabled={simLidarEnabled} onPoseUpdate={onPoseUpdate} robotIndex={robotIndex} />
             <SimCamera bodyRef={internalRef} ros={ros} enabled={simCamEnabled} thumbnailCanvasRef={thumbnailCanvasRef} httpEndpoint={camHttpEndpoint} expandedCanvasRef={expandedCanvasRef} />
         </>
     );

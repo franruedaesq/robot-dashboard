@@ -1,10 +1,10 @@
-import { useEffect, useRef, useMemo } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useRef } from 'react';
 import type { RapierRigidBody } from '@react-three/rapier';
+import { useRapier } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
-import * as THREE from 'three';
 import type { RobotPose } from '../types';
 import { SENSOR_HZ, LIDAR_RAYS, LIDAR_MAX_DIST } from '../constants';
+import { useSimulationLoop } from '../contexts/HeadlessContext';
 
 function gaussianRandom(mean = 0, stdev = 1) {
     const u = 1 - Math.random();
@@ -12,25 +12,25 @@ function gaussianRandom(mean = 0, stdev = 1) {
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v) * stdev + mean;
 }
 
-export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
+export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }: {
     bodyRef: React.RefObject<RapierRigidBody | null>;
     ros: ROSLIB.Ros | null;
     enabled: boolean;
     onPoseUpdate?: (p: RobotPose) => void;
+    robotIndex?: number;
 }) {
-    const { scene } = useThree();
+    const { world, rapier } = useRapier();
     const lastTime = useRef(0);
     const topicRef = useRef<ROSLIB.Topic<any> | null>(null);
 
     useEffect(() => {
         if (!ros) return;
-        topicRef.current = new ROSLIB.Topic<any>({ ros, name: '/sim_scan', messageType: 'sensor_msgs/LaserScan' });
+        const topicName = robotIndex === 0 ? '/sim_scan' : `/robot_${robotIndex}/sim_scan`;
+        topicRef.current = new ROSLIB.Topic<any>({ ros, name: topicName, messageType: 'sensor_msgs/LaserScan' });
         return () => { topicRef.current = null; };
-    }, [ros]);
+    }, [ros, robotIndex]);
 
-    const raycaster = useMemo(() => new THREE.Raycaster(), []);
-
-    useFrame(({ clock }) => {
+    useSimulationLoop(undefined, (delta) => {
         const body = bodyRef.current;
         if (!body) return;
         const t = body.translation();
@@ -40,31 +40,35 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
 
         if (!enabled) return;
 
-        if (clock.elapsedTime - lastTime.current < 1 / SENSOR_HZ) return;
-        lastTime.current = clock.elapsedTime;
+        lastTime.current += delta;
+        if (lastTime.current < 1 / SENSOR_HZ) return;
+        lastTime.current = 0;
 
-        const origin = new THREE.Vector3(t.x, t.y + 0.18, t.z);
         const ranges: number[] = [];
+        const ROBOT_RADIUS = 0.25; // Skip inner collider bounding box
 
         for (let i = 0; i < LIDAR_RAYS; i++) {
             const angle = yaw + (i * Math.PI * 2) / LIDAR_RAYS;
-            const dir = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle));
+            const dirX = Math.sin(angle);
+            const dirZ = Math.cos(angle);
 
-            raycaster.set(origin, dir);
-            raycaster.far = LIDAR_MAX_DIST;
+            const originObj = { x: t.x + dirX * ROBOT_RADIUS, y: t.y + 0.18, z: t.z + dirZ * ROBOT_RADIUS };
+            const dirObj = { x: dirX, y: 0, z: dirZ };
+            const ray = new rapier.Ray(originObj, dirObj);
 
-            // Only intersect the sim environment group to skip checking the extremely complex robot URDF model recursively 360 times
-            const simEnv = scene.getObjectByName('sim_environment');
-            const targetObjects = simEnv ? simEnv.children : scene.children;
+            // solid = true means we hit inside of colliders.
+            const hit = world.castRay(ray, LIDAR_MAX_DIST - ROBOT_RADIUS, true, undefined, undefined, undefined, undefined);
 
-            const real = raycaster.intersectObjects(targetObjects, true).filter(h => h.distance > 0.1);
-
-            // Sensor imperfection: 0.5% chance ray gets lost and returns max dist
             const dropped = Math.random() < 0.005;
+            let dist = LIDAR_MAX_DIST;
 
-            let dist = dropped ? LIDAR_MAX_DIST : (real.length > 0 ? real[0].distance : LIDAR_MAX_DIST);
+            if (!dropped && hit) {
+                const rawToi = (hit as any).toi ?? (hit as any).timeOfImpact;
+                if (rawToi != null) {
+                    dist = rawToi + ROBOT_RADIUS;
+                }
+            }
 
-            // Sensor noise: Add 1% distance-proportional gaussian noise
             if (dist < LIDAR_MAX_DIST) {
                 dist = gaussianRandom(dist, dist * 0.01);
             }
@@ -72,8 +76,10 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate }: {
             ranges.push(dist);
         }
 
+        const frameId = robotIndex === 0 ? 'sim_lidar' : `robot_${robotIndex}/sim_lidar`;
+
         topicRef.current?.publish({
-            header: { frame_id: 'sim_lidar' },
+            header: { frame_id: frameId },
             angle_min: 0, angle_max: Math.PI * 2,
             angle_increment: (Math.PI * 2) / LIDAR_RAYS,
             time_increment: 0, scan_time: 1 / SENSOR_HZ,

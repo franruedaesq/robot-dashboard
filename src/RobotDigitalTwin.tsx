@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect, useContext } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
@@ -18,6 +18,8 @@ import { RealLiDARPanel } from './components/RealLiDARPanel';
 import { PlacementOverlay } from './components/PlacementOverlay';
 import { WorldEditorPanel } from './components/WorldEditorPanel';
 import { RobotArmPanel } from './components/RobotArmPanel';
+import { HeadlessContext } from './contexts/HeadlessContext';
+import { HeadlessEngine } from './components/HeadlessEngine';
 
 // ─────────────────────────────────────────────
 // Velocity helpers
@@ -108,37 +110,64 @@ function KeyboardHint() {
 // ─────────────────────────────────────────────
 // Camera Manager for focusing robot
 // ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// Camera Manager for focusing robot
-// ─────────────────────────────────────────────
-function CameraManager({ pose, resetTrigger, heightOffset = 0 }: { pose: RobotPose, resetTrigger: number, heightOffset?: number }) {
+function CameraManager({ pose, resetTrigger, heightOffset = 0, cameraFollow = true }: { pose: RobotPose, resetTrigger: number, heightOffset?: number, cameraFollow?: boolean }) {
     const { camera, controls } = useThree();
     const [animating, setAnimating] = useState(false);
-    const targetCamPos = useRef(new THREE.Vector3());
-    const targetLookAt = useRef(new THREE.Vector3());
+
+    const prevTrigger = useRef(resetTrigger);
+    const prevHeight = useRef(heightOffset);
 
     useEffect(() => {
-        if ((resetTrigger > 0 || heightOffset !== undefined) && controls) {
-            // Isometric perspective relative to robot
-            // We incorporate heightOffset into both the eye and the target
-            targetCamPos.current.set(pose.x + 1.5, pose.y + 1.5 + heightOffset, pose.z + 2.0);
-            targetLookAt.current.set(pose.x, pose.y + 0.3 + heightOffset, pose.z);
+        if (!controls) return;
+        if (resetTrigger !== prevTrigger.current || heightOffset !== prevHeight.current) {
             setAnimating(true);
+            prevTrigger.current = resetTrigger;
+            prevHeight.current = heightOffset;
         }
-    }, [resetTrigger, pose.x, pose.y, pose.z, heightOffset, controls]);
+    }, [resetTrigger, heightOffset, controls]);
 
     useFrame((_, delta) => {
-        if (animating && controls) {
-            const r_controls = controls as any;
-            camera.position.lerp(targetCamPos.current, 6 * delta);
-            r_controls.target.lerp(targetLookAt.current, 6 * delta);
+        if (!controls) return;
+        const r_controls = controls as any;
+        const speed = 1.0 - Math.exp(-6 * delta);
+
+        // The target the robot is actually at right now
+        const idealTarget = new THREE.Vector3(pose.x, pose.y + 0.3 + heightOffset, pose.z);
+
+        if (animating) {
+            // Isometric perspective relative to robot
+            const idealCamPos = new THREE.Vector3(pose.x + 1.5, pose.y + 1.5 + heightOffset, pose.z + 2.0);
+
+            camera.position.lerp(idealCamPos, speed);
+            r_controls.target.lerp(idealTarget, speed);
             r_controls.update();
 
+            // Stop animating once we are close enough
             if (
-                camera.position.distanceToSquared(targetCamPos.current) < 0.001 &&
-                r_controls.target.distanceToSquared(targetLookAt.current) < 0.001
+                camera.position.distanceToSquared(idealCamPos) < 0.001 &&
+                r_controls.target.distanceToSquared(idealTarget) < 0.001
             ) {
                 setAnimating(false);
+            }
+        }
+        else if (cameraFollow) {
+            // Smoothly track the target without changing the user's rotation/zoom
+            const diff = new THREE.Vector3().subVectors(idealTarget, r_controls.target);
+
+            if (diff.lengthSq() > 0.000001) {
+                // Move a percentage of the distance per frame (framerate independent)
+                const step = diff.multiplyScalar(1.0 - Math.exp(-10 * delta));
+
+                // Disable OrbitControl's internal damping for a moment so our manual updates aren't fought
+                const wasDamping = r_controls.enableDamping;
+                r_controls.enableDamping = false;
+
+                // Move BOTH camera and target exactly the same amount, locking the relative perspective
+                r_controls.target.add(step);
+                camera.position.add(step);
+
+                r_controls.update(); // Sync internal spherical state instantly
+                r_controls.enableDamping = wasDamping;
             }
         }
     });
@@ -153,6 +182,7 @@ const defaultRobot = PRELOADED_ROBOTS[0];
 
 export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const isMobile = useIsMobile();
+    const { isHeadless, setIsHeadless, timeScale, setTimeScale, batchSize, setBatchSize, metrics: rlMetrics } = useContext(HeadlessContext);
     // ── URDF / robot state ───────────────────────────────────────────────────
     const [urdfText, setUrdfText] = useState<string>(defaultRobot.urdf);
     const [pkgMap, setPkgMap] = useState<PackageMap>(defaultRobot.pkgMap);
@@ -181,6 +211,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     // ── Camera controls ──────────────────────────────────────────────────────
     const [cameraResetTrigger, setCameraResetTrigger] = useState(0);
     const [cameraHeightOffset, setCameraHeightOffset] = useState(0);
+    const [cameraFollow, setCameraFollow] = useState(true);
 
     // ── Velocity / controls ──────────────────────────────────────────────────
     const [velocity, setVelocity] = useState<Velocity>(STOP);
@@ -306,6 +337,18 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                         setCameraResetTrigger(c => c + 1);
                     }
                 }}>
+                {isHeadless && (
+                    <div style={{
+                        position: 'absolute', inset: 0, zIndex: 100,
+                        backgroundColor: '#050505',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                        color: '#ff0055', fontFamily: 'monospace'
+                    }}>
+                        <h2 style={{ fontSize: '2rem', marginBottom: '8px' }}>MODO HEADLESS</h2>
+                        <p style={{ fontSize: '1rem', color: '#888' }}>Simulación acelerada en progreso ({timeScale}x)</p>
+                        <p style={{ fontSize: '0.85rem', color: '#666' }}>{rlMetrics.simStepsPerSec} steps/s</p>
+                    </div>
+                )}
                 <Canvas
 
                     camera={{ position: [4, 4, 6], fov: 50 }}
@@ -326,22 +369,27 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                     />
                     <pointLight position={[-5, 5, -5]} intensity={0.5} color="#6644aa" />
 
-                    <CameraManager pose={pose} resetTrigger={cameraResetTrigger} heightOffset={cameraHeightOffset} />
+                    <CameraManager pose={pose} resetTrigger={cameraResetTrigger} heightOffset={cameraHeightOffset} cameraFollow={cameraFollow} />
 
-                    <Physics key={worldKey} gravity={[0, -9.81, 0]}>
+                    <Physics key={worldKey} gravity={[0, -9.81, 0]} paused={isHeadless}>
+                        <HeadlessEngine />
                         <World obstacles={obstacles} />
-                        <RobotPhysicsBody
-                            parsed={parsed ? { ...parsed, spawnY: metrics.spawnY, size: metrics.size, visualYOffset } : null}
-                            velocity={velocity}
-                            ros={ros}
-                            simLidarEnabled={simLidarEnabled}
-                            simCamEnabled={simCamEnabled}
-                            simJointsEnabled={simJointsEnabled}
-                            thumbnailCanvasRef={thumbnailCanvasRef}
-                            camHttpEndpoint={camHttpEndpoint || undefined}
-                            expandedCanvasRef={expandedCanvasRef}
-                            onPoseUpdate={setPose}
-                        />
+                        {Array.from({ length: batchSize }).map((_, i) => (
+                            <RobotPhysicsBody
+                                key={`robot-${i}`}
+                                robotIndex={i}
+                                parsed={parsed ? { ...parsed, spawnY: metrics.spawnY, size: metrics.size, visualYOffset } : null}
+                                velocity={velocity}
+                                ros={ros}
+                                simLidarEnabled={simLidarEnabled}
+                                simCamEnabled={simCamEnabled && i === 0}
+                                simJointsEnabled={simJointsEnabled}
+                                thumbnailCanvasRef={thumbnailCanvasRef}
+                                camHttpEndpoint={camHttpEndpoint || undefined}
+                                expandedCanvasRef={expandedCanvasRef}
+                                onPoseUpdate={i === 0 ? setPose : undefined}
+                            />
+                        ))}
                     </Physics>
 
                     {/* Ghost preview + floor raycasting for placement */}
@@ -470,6 +518,37 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                 boxSizing: 'border-box'
             }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* ── RL Headless Training ─────────────────────────────────────────────── */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', backgroundColor: isHeadless ? '#1e0020' : '#0a0f18', padding: '12px', borderRadius: '10px', border: `1px solid ${isHeadless ? '#ff0055' : '#1e2a4a'}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.85rem', color: isHeadless ? '#ff0055' : '#aaa', fontWeight: 600 }}>🧪 Entrenamiento IA (Headless)</span>
+                            <button
+                                onClick={() => setIsHeadless(!isHeadless)}
+                                style={{ padding: '4px 10px', fontSize: '0.7rem', backgroundColor: isHeadless ? '#ff0055' : '#2a2a4a', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                            >
+                                {isHeadless ? 'Desactivar' : 'Activar'}
+                            </button>
+                        </div>
+                        {isHeadless && (
+                            <div style={{ fontSize: '0.75rem', color: '#f8c', marginTop: 4 }}>
+                                <div>🚀 {rlMetrics.simStepsPerSec} timesteps/sec ({(rlMetrics.simStepsPerSec / 60).toFixed(1)}x real time)</div>
+                                <div style={{ fontSize: '0.65rem', color: '#aaa', marginTop: 4 }}>
+                                    Robots publicando LiDAR acelerado. La UI 3D está pausada para dar CPU a la IA.
+                                </div>
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', marginTop: 6 }}>
+                            <label style={{ width: 60, color: '#8be' }}>Batch Size</label>
+                            <input type="range" min="1" max="10" step="1" value={batchSize} onChange={e => setBatchSize(parseInt(e.target.value))} style={{ flex: 1 }} />
+                            <span style={{ width: 20 }}>{batchSize}</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem' }}>
+                            <label style={{ width: 60, color: '#8be' }}>Time Scale</label>
+                            <input type="range" min="1" max="50" step="1" value={timeScale} onChange={e => setTimeScale(parseInt(e.target.value))} style={{ flex: 1 }} />
+                            <span style={{ width: 20 }}>{timeScale}x</span>
+                        </div>
+                    </div>
+
                     {/* ── Sensor toggles ─────────────────────────────────────────────── */}
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: '#0a0f18', padding: '12px', borderRadius: '10px', border: '1px solid #1e2a4a' }}>
                         <button {...panelBtn('📡 LiDAR Real (/scan)', showRealLidar, () => setShowRealLidar(v => !v))} />
@@ -491,17 +570,35 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                         <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{visualYOffset.toFixed(2)}m</span>
                     </div>
 
-                    {/* ── Camera Elevation ───────────────────────────────────────────── */}
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
-                        <label>🎥 Elevación Cámara (Vertical):</label>
-                        <input
-                            type="range"
-                            min="-1.5" max="1.5" step="0.01"
-                            value={cameraHeightOffset}
-                            onChange={e => setCameraHeightOffset(parseFloat(e.target.value))}
-                            style={{ flex: 1, cursor: 'pointer' }}
-                        />
-                        <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{cameraHeightOffset.toFixed(2)}m</span>
+                    {/* ── Camera Controls ───────────────────────────────────────────── */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                                <input type="checkbox" checked={cameraFollow} onChange={e => setCameraFollow(e.target.checked)} />
+                                🎥 Seguir al Robot
+                            </label>
+                            <button
+                                onClick={() => setCameraResetTrigger(c => c + 1)}
+                                style={{
+                                    padding: '2px 8px', fontSize: '0.75rem', cursor: 'pointer',
+                                    backgroundColor: '#1e3860', color: '#fff', border: '1px solid #3a6ea5',
+                                    borderRadius: 4, transition: 'all 0.1s'
+                                }}
+                            >
+                                🎯 Centrar Vista
+                            </button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <label>↕️ Elevación Cámara:</label>
+                            <input
+                                type="range"
+                                min="-1.5" max="1.5" step="0.01"
+                                value={cameraHeightOffset}
+                                onChange={e => setCameraHeightOffset(parseFloat(e.target.value))}
+                                style={{ flex: 1, cursor: 'pointer' }}
+                            />
+                            <span style={{ width: '40px', fontFamily: 'monospace', textAlign: 'right' }}>{cameraHeightOffset.toFixed(2)}m</span>
+                        </div>
                     </div>
 
                     {/* ── Detected sensors from URDF ─────────────────────────────────── */}

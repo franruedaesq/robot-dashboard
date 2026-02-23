@@ -5,6 +5,7 @@ import * as ROSLIB from 'roslib';
 import type { RobotPose } from '../types';
 import { SENSOR_HZ, LIDAR_RAYS, LIDAR_MAX_DIST } from '../constants';
 import { useSimulationLoop } from '../contexts/HeadlessContext';
+import { tfTree, Transform, Vec3 } from '../utils/tf';
 
 function gaussianRandom(mean = 0, stdev = 1) {
     const u = 1 - Math.random();
@@ -27,6 +28,21 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }
         if (!ros) return;
         const topicName = robotIndex === 0 ? '/sim_scan' : `/robot_${robotIndex}/sim_scan`;
         topicRef.current = new ROSLIB.Topic<any>({ ros, name: topicName, messageType: 'sensor_msgs/LaserScan' });
+
+        // Register the lidar frame with tf-engine relative to base_link
+        const frameId = robotIndex === 0 ? 'sim_lidar' : `robot_${robotIndex}/sim_lidar`;
+        const parentFrameId = `robot_${robotIndex}/base_link`;
+
+        // We ensure base_link exists just in case SimLiDAR mounts first
+        if (!tfTree.hasFrame(parentFrameId)) {
+            tfTree.addFrame(parentFrameId, "world");
+        }
+
+        if (!tfTree.hasFrame(frameId)) {
+            // Hardcoded offset logic moved to one-time TF registration
+            tfTree.addFrame(frameId, parentFrameId, new Transform(new Vec3(0, 0.18, 0)));
+        }
+
         return () => { topicRef.current = null; };
     }, [ros, robotIndex]);
 
@@ -47,12 +63,24 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }
         const ranges: number[] = [];
         const ROBOT_RADIUS = 0.25; // Skip inner collider bounding box
 
+        const frameId = robotIndex === 0 ? 'sim_lidar' : `robot_${robotIndex}/sim_lidar`;
+
+        // Get the lidar's position in world space at this exact timestamp
+        let lidarPos = { x: t.x, y: t.y + 0.18, z: t.z };
+        if (tfTree.hasFrame(frameId)) {
+            const transform = tfTree.getTransformAt("world", frameId, Date.now());
+            lidarPos = { x: transform.translation.x, y: transform.translation.y, z: transform.translation.z };
+        }
+
         for (let i = 0; i < LIDAR_RAYS; i++) {
             const angle = yaw + (i * Math.PI * 2) / LIDAR_RAYS;
             const dirX = Math.sin(angle);
             const dirZ = Math.cos(angle);
 
-            const originObj = { x: t.x + dirX * ROBOT_RADIUS, y: t.y + 0.18, z: t.z + dirZ * ROBOT_RADIUS };
+            // Origin is now based purely on the tf-engine reported center point, rather
+            // than manually reconstructing the offset. We still push it out by ROBOT_RADIUS
+            // to avoid hitting the robot's own collider box.
+            const originObj = { x: lidarPos.x + dirX * ROBOT_RADIUS, y: lidarPos.y, z: lidarPos.z + dirZ * ROBOT_RADIUS };
             const dirObj = { x: dirX, y: 0, z: dirZ };
             const ray = new rapier.Ray(originObj, dirObj);
 
@@ -75,8 +103,6 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }
 
             ranges.push(dist);
         }
-
-        const frameId = robotIndex === 0 ? 'sim_lidar' : `robot_${robotIndex}/sim_lidar`;
 
         topicRef.current?.publish({
             header: { frame_id: frameId },

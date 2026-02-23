@@ -3,6 +3,7 @@ import type { RapierRigidBody } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import { ODOM_HZ } from '../constants';
 import { useSimulationLoop } from '../contexts/HeadlessContext';
+import { tfTree } from '../utils/tf';
 
 export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
     bodyRef: React.RefObject<RapierRigidBody | null>;
@@ -15,9 +16,6 @@ export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
     useEffect(() => {
         if (!ros) return;
         const topicName = robotIndex === 0 ? '/sim_odom' : `/robot_${robotIndex}/sim_odom`;
-        const frameId = robotIndex === 0 ? 'odom' : `robot_${robotIndex}/odom`;
-        const childFrameId = robotIndex === 0 ? 'base_link' : `robot_${robotIndex}/base_link`;
-
         topicRef.current = new ROSLIB.Topic<any>({ ros, name: topicName, messageType: 'nav_msgs/Odometry' });
 
         // Save these in the ref or just use them in publish directly, 
@@ -35,12 +33,23 @@ export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
         if (lastTime.current < 1 / ODOM_HZ) return;
         lastTime.current = 0; // Better to subtract but this is fine for simple sim
 
-        const t = body.translation();
-        const r = body.rotation();
-        const lv = body.linvel();
-
         const frameId = robotIndex === 0 ? 'odom' : `robot_${robotIndex}/odom`;
         const childFrameId = robotIndex === 0 ? 'base_link' : `robot_${robotIndex}/base_link`;
+
+        let t = { x: 0, y: 0, z: 0 };
+        let r = { x: 0, y: 0, z: 0, w: 1 };
+
+        if (tfTree.hasFrame(childFrameId)) {
+            const transform = tfTree.getTransformAt("world", childFrameId, Date.now());
+            t = transform.translation;
+            r = transform.rotation;
+        } else {
+            // Fallback just in case
+            t = body.translation();
+            r = body.rotation();
+        }
+
+        const lv = body.linvel();
 
         topicRef.current?.publish({
             header: { frame_id: frameId }, child_frame_id: childFrameId,

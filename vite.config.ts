@@ -10,5 +10,8 @@ export default defineConfig({
     alias: {
       'tf-engine': path.resolve(__dirname, 'node_modules/tf-engine/dist/index.js')
     }
+  },
+  optimizeDeps: {
+    exclude: ['@crdt-sync/core']
   }
 })

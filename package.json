@@ -13,6 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@crdt-sync/core": "^0.3.2",
+    "@crdt-sync/react": "^0.3.2",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@react-three/rapier": "^2.2.0",
@@ -21,7 +23,8 @@
     "roslib": "^2.0.1",
     "tf-engine": "^1.0.0",
     "three": "^0.183.1",
-    "urdf-loader": "^0.12.6"
+    "urdf-loader": "^0.12.6",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -30,6 +33,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/roslib": "^1.3.5",
     "@types/three": "^0.183.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
     "concurrently": "^9.2.1",
     "cors": "^2.8.6",

@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { WebSocketServer } from 'ws';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,3 +27,21 @@ app.listen(PORT, () => {
     console.log(`   📁 src/assets/robots/`);
     console.log(`========================================================\n`);
 });
+
+// ── CRDT Sync Relay (port 8002) ──────────────────────────────────────────────
+// Broadcasts incoming CRDT envelope JSON arrays to all other connected clients.
+const CRDT_PORT = 8002;
+const wss = new WebSocketServer({ port: CRDT_PORT });
+
+wss.on('connection', (ws) => {
+    ws.on('message', (data) => {
+        const payload = data.toString();
+        wss.clients.forEach(client => {
+            if (client !== ws && client.readyState === 1 /* OPEN */) {
+                client.send(payload);
+            }
+        });
+    });
+});
+
+console.log(`🔄 CRDT relay server on ws://localhost:${CRDT_PORT}`);

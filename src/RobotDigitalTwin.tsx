@@ -19,6 +19,7 @@ import { PlacementOverlay } from './components/PlacementOverlay';
 import { WorldEditorPanel } from './components/WorldEditorPanel';
 import { RobotArmPanel } from './components/RobotArmPanel';
 import { HeadlessContext } from './contexts/HeadlessContext';
+import { useCrdtWorld } from './contexts/CrdtWorldContext';
 import { HeadlessEngine } from './components/HeadlessEngine';
 import { getRobotConfig, updateRobotConfig } from './utils/storage';
 
@@ -180,8 +181,8 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const thumbnailCanvasRef = useRef<HTMLCanvasElement>(null);
     const expandedCanvasRef = useRef<HTMLCanvasElement>(null);
 
-    // ── World / obstacle state ───────────────────────────────────────────────
-    const [obstacles, setObstacles] = useState<ObstacleConfig[]>([]);
+    // ── World / obstacle state (CRDT-synced) ────────────────────────────────
+    const { obstacles, setObstacles } = useCrdtWorld();
     const [worldKey, setWorldKey] = useState(0);
     const [placingType, setPlacingType] = useState<ObstacleType | null>(null);
     const [placingDynamic, setPlacingDynamic] = useState(true);
@@ -307,13 +308,13 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
         setObstacles(preset.obstacles);
         setWorldKey(k => k + 1); // remount Physics → robot resets to spawn
         setPlacingType(null);
-    }, []);
+    }, [setObstacles]);
 
     const handleClearAll = useCallback(() => {
         setObstacles([]);
         setWorldKey(k => k + 1);
         setPlacingType(null);
-    }, []);
+    }, [setObstacles]);
 
     const handlePlaceObstacle = useCallback((pos: THREE.Vector3) => {
         if (!placingType) return;
@@ -326,13 +327,13 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
             color: DEFAULT_COLOR[placingType],
             dynamic: placingDynamic,
         };
-        setObstacles(prev => [...prev, newObs]);
+        setObstacles([...obstacles, newObs]);
         setPlacingType(null); // exit placement mode after placing one
-    }, [placingType, placingDynamic, placingRotation]);
+    }, [placingType, placingDynamic, placingRotation, obstacles, setObstacles]);
 
     const handleDeleteObstacle = useCallback((id: string) => {
-        setObstacles(prev => prev.filter(o => o.id !== id));
-    }, []);
+        setObstacles(obstacles.filter(o => o.id !== id));
+    }, [obstacles, setObstacles]);
 
     const handleToggleRotation = useCallback(() => {
         setPlacingRotation(r => r === 0 ? Math.PI / 2 : 0);

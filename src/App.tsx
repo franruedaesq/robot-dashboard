@@ -3,6 +3,7 @@ import * as ROSLIB from 'roslib';
 import RobotDigitalTwin from './RobotDigitalTwin';
 import { useIsMobile } from './utils/media';
 import { HeadlessProvider } from './contexts/HeadlessContext';
+import { CrdtWorldProvider } from './contexts/CrdtWorldContext';
 
 function App() {
   const [status, setStatus] = useState('Desconectado 🔴');
@@ -22,6 +23,7 @@ function App() {
 
   return (
     <HeadlessProvider>
+      <CrdtWorldProvider>
       <div style={{
         fontFamily: 'Inter, sans-serif',
         backgroundColor: '#0d0d1a',
@@ -39,6 +41,7 @@ function App() {
 
         {ros && <RobotDigitalTwin ros={ros} />}
       </div>
+      </CrdtWorldProvider>
     </HeadlessProvider>
   );
 }

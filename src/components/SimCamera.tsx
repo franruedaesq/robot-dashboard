@@ -54,7 +54,17 @@ export function SimCamera({ bodyRef, ros, enabled, thumbnailCanvasRef, httpEndpo
 
         gl.setRenderTarget(renderTarget);
         gl.clear(true, true, true);
+
+        // Add a temporary ambient light to the scene just for this camera's view
+        const ambientLight = new THREE.AmbientLight(0xffffff, 2.0); // Bright white light
+        scene.add(ambientLight);
+
         gl.render(scene, cam);
+
+        // Remove the temporary light and cleanup
+        scene.remove(ambientLight);
+        ambientLight.dispose();
+
         gl.setRenderTarget(null);
         gl.readRenderTargetPixels(renderTarget, 0, 0, CAM_W, CAM_H, pixelBuf);
 
@@ -83,8 +93,8 @@ export function SimCamera({ bodyRef, ros, enabled, thumbnailCanvasRef, httpEndpo
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ image: base64, format: 'jpeg', width: CAM_W, height: CAM_H }),
             })
-            .catch(() => {})
-            .finally(() => { postInFlight.current = false; });
+                .catch(() => { })
+                .finally(() => { postInFlight.current = false; });
         }
     });
 

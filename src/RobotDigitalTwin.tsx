@@ -234,6 +234,32 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
         };
     }, [publishVel]);
 
+    // ── External /cmd_vel Subscription ───────────────────────────────────────
+    useEffect(() => {
+        if (!ros) return;
+
+        const cmdVelTopic = new ROSLIB.Topic({
+            ros,
+            name: '/cmd_vel',
+            messageType: 'geometry_msgs/Twist'
+        });
+
+        const cb = (message: any) => {
+            if (message?.linear && message?.angular) {
+                setVelocity(prev => {
+                    const newLin = message.linear.x;
+                    const newAng = message.angular.z;
+                    // Prevent unnecessary state updates if values are identical
+                    if (prev.linear === newLin && prev.angular === newAng) return prev;
+                    return { linear: newLin, angular: newAng };
+                });
+            }
+        };
+
+        cmdVelTopic.subscribe(cb);
+        return () => cmdVelTopic.unsubscribe(cb);
+    }, [ros]);
+
     // ── Sensor detection from URDF ───────────────────────────────────────────
     const detectedSensors = useMemo<DetectedSensor[]>(() => parseSensors(urdfText), [urdfText]);
 

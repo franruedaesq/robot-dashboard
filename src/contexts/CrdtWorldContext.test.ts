@@ -3,7 +3,7 @@ import type { ObstacleConfig } from '../types';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
-const mockSetObstacles = vi.fn();
+
 const mockProxy = {
     state: {
         obstacles: [] as ObstacleConfig[],
@@ -45,7 +45,7 @@ describe('CrdtWorldContext – useCrdtState integration', () => {
     });
 
     it('forwards initial empty obstacles from useCrdtState', () => {
-        const result = (useCrdtState as ReturnType<typeof vi.fn>).mock.results;
+        (useCrdtState as ReturnType<typeof vi.fn>).mock.results;
         // The mock is set up but not yet called — just verify the mock shape.
         expect(useCrdtState).toBeDefined();
     });

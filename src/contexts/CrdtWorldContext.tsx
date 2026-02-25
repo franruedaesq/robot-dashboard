@@ -10,6 +10,7 @@ type WorldState = {
 
 const INITIAL_STATE: WorldState = { obstacles: [] };
 const WS_URL = 'ws://localhost:8002';
+const ROOM_ID = 'world';
 
 // ── Context value exposed to consumers ───────────────────────────────────────
 type CrdtWorldContextValue = {
@@ -20,7 +21,7 @@ type CrdtWorldContextValue = {
 
 export const CrdtWorldContext = createContext<CrdtWorldContextValue>({
     obstacles: [],
-    setObstacles: () => {},
+    setObstacles: () => { },
     status: 'connecting',
 });
 
@@ -28,6 +29,7 @@ export const CrdtWorldContext = createContext<CrdtWorldContextValue>({
 export function CrdtWorldProvider({ children }: { children: React.ReactNode }) {
     const { state, proxy, status } = useCrdtState<WorldState>(
         WS_URL,
+        ROOM_ID,
         INITIAL_STATE,
         { wasmUrl }
     );

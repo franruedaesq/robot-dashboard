@@ -3,13 +3,14 @@ import type { RapierRigidBody } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import { ODOM_HZ } from '../constants';
 import { useSimulationLoop } from '../contexts/HeadlessContext';
-import { tfTree } from '../utils/tf';
+import { useTFEngine } from '../contexts/TFEngineContext';
 
 export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
     bodyRef: React.RefObject<RapierRigidBody | null>;
     ros: ROSLIB.Ros | null;
     robotIndex?: number;
 }) {
+    const tfTree = useTFEngine();
     const lastTime = useRef(0);
     const topicRef = useRef<ROSLIB.Topic<any> | null>(null);
 

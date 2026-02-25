@@ -249,7 +249,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const expandedCanvasRef = useRef<HTMLCanvasElement>(null);
 
     // ── World / obstacle state (CRDT-synced) ────────────────────────────────
-    const { obstacles, setObstacles } = useCrdtWorld();
+    const { obstacles, setObstacles, sharedRobot, setSharedRobot } = useCrdtWorld();
     const [worldKey, setWorldKey] = useState(0);
     const [placingType, setPlacingType] = useState<ObstacleType | null>(null);
     const [placingDynamic, setPlacingDynamic] = useState(true);
@@ -339,11 +339,42 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     }, [urdfText, pkgMap, forwardAngle]);
 
     const handleUrdfLoad = useCallback((text: string, map: PackageMap, fwdAngle?: number, vyOffset?: number) => {
+        const newFwdAngle = fwdAngle ?? 0;
+        const newVyOffset = vyOffset ?? 0;
         setPkgMap(map);
         setUrdfText(text);
-        setForwardAngle(fwdAngle ?? 0);
-        setVisualYOffset(vyOffset ?? 0);
-    }, []);
+        setForwardAngle(newFwdAngle);
+        setVisualYOffset(newVyOffset);
+        if (syncRobotConfigRef.current) {
+            setSharedRobot({ urdfText: text, pkgMap: map, forwardAngle: newFwdAngle, visualYOffset: newVyOffset });
+        }
+    }, [setSharedRobot]);
+
+    // ── Sync Robot Config ────────────────────────────────────────────────────
+    const [syncRobotConfig, setSyncRobotConfig] = useState(() => {
+        return localStorage.getItem('syncRobotConfig') === 'true';
+    });
+    const syncRobotConfigRef = useRef(syncRobotConfig);
+
+    useEffect(() => {
+        syncRobotConfigRef.current = syncRobotConfig;
+        localStorage.setItem('syncRobotConfig', String(syncRobotConfig));
+
+        if (syncRobotConfig && !sharedRobot) {
+            setSharedRobot({ urdfText, pkgMap, forwardAngle, visualYOffset });
+        }
+    }, [syncRobotConfig, sharedRobot, urdfText, pkgMap, forwardAngle, visualYOffset, setSharedRobot]);
+
+    useEffect(() => {
+        if (!syncRobotConfig || !sharedRobot) return;
+
+        if (sharedRobot.urdfText !== urdfText || sharedRobot.visualYOffset !== visualYOffset || sharedRobot.forwardAngle !== forwardAngle) {
+            setUrdfText(sharedRobot.urdfText);
+            setPkgMap(sharedRobot.pkgMap);
+            setForwardAngle(sharedRobot.forwardAngle);
+            setVisualYOffset(sharedRobot.visualYOffset);
+        }
+    }, [sharedRobot, syncRobotConfig, urdfText, visualYOffset, forwardAngle]);
 
     // Load config from localStorage whenever the parsed robot changes
     useEffect(() => {
@@ -358,6 +389,9 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const handleVisualYOffsetChange = (val: number) => {
         setVisualYOffset(val);
         updateRobotConfig(parsed?.name, { visualYOffset: val });
+        if (syncRobotConfig) {
+            setSharedRobot({ urdfText, pkgMap, forwardAngle, visualYOffset: val });
+        }
     };
 
     const handleCameraFollowChange = (val: boolean) => {
@@ -654,16 +688,24 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                     </div>
 
                     {/* ── Visual Vertical Offset ─────────────────────────────────────── */}
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
-                        <label>↕️ Ajuste Y (Robot Visual):</label>
-                        <input
-                            type="range"
-                            min="-1.0" max="1.0" step="0.01"
-                            value={visualYOffset}
-                            onChange={e => handleVisualYOffsetChange(parseFloat(e.target.value))}
-                            style={{ flex: 1, cursor: 'pointer' }}
-                        />
-                        <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{visualYOffset.toFixed(2)}m</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', backgroundColor: '#0d1220', border: '1px solid #1e2a4a', borderRadius: 8, padding: '10px 14px', color: '#cde', fontSize: '0.8rem', width: '100%', boxSizing: 'border-box' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #1e2a4a', paddingBottom: '8px', marginBottom: '2px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: '#5af', fontWeight: 600 }}>
+                                <input type="checkbox" checked={syncRobotConfig} onChange={e => setSyncRobotConfig(e.target.checked)} />
+                                🌐 Sincronizar Modelo y Offset
+                            </label>
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <label>↕️ Ajuste Y (Visual):</label>
+                            <input
+                                type="range"
+                                min="-1.0" max="1.0" step="0.01"
+                                value={visualYOffset}
+                                onChange={e => handleVisualYOffsetChange(parseFloat(e.target.value))}
+                                style={{ flex: 1, cursor: 'pointer' }}
+                            />
+                            <span style={{ width: '50px', fontFamily: 'monospace', textAlign: 'right' }}>{visualYOffset.toFixed(2)}m</span>
+                        </div>
                     </div>
 
                     {/* ── Camera Controls ───────────────────────────────────────────── */}

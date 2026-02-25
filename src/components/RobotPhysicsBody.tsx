@@ -8,7 +8,8 @@ import { findJoint } from '../utils/urdf';
 import { OdometryPublisher } from './OdometryPublisher';
 import { SimLiDAR } from './SimLiDAR';
 import { SimCamera } from './SimCamera';
-import { tfTree, Transform, Vec3, Quaternion } from '../utils/tf';
+import { Transform, Vec3, Quaternion } from '@tf-engine/core';
+import { useTFEngine } from '../contexts/TFEngineContext';
 
 export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     parsed: (ParsedRobot & { visualYOffset?: number }) | null;
@@ -26,6 +27,7 @@ export const RobotPhysicsBody = forwardRef<RapierRigidBody, {
     const internalRef = useRef<RapierRigidBody>(null);
     const wheelAngleRef = useRef({ left: 0, right: 0 });
     const gaitPhaseRef = useRef(0);
+    const tfTree = useTFEngine();
 
     const setRef = useCallback((body: RapierRigidBody | null) => {
         (internalRef as React.RefObject<RapierRigidBody | null>).current = body;

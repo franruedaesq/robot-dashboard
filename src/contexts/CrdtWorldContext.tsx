@@ -4,8 +4,16 @@ import wasmUrl from '@crdt-sync/core/pkg/web/crdt_sync_bg.wasm?url';
 import type { ObstacleConfig } from '../types';
 
 // ── Shared state shape ────────────────────────────────────────────────────────
+export type SharedRobotState = {
+    urdfText: string;
+    pkgMap: Record<string, string>;
+    forwardAngle: number;
+    visualYOffset: number;
+};
+
 type WorldState = {
     obstacles: ObstacleConfig[];
+    sharedRobot?: SharedRobotState;
 };
 
 const INITIAL_STATE: WorldState = { obstacles: [] };
@@ -16,12 +24,15 @@ const ROOM_ID = 'world';
 type CrdtWorldContextValue = {
     obstacles: ObstacleConfig[];
     setObstacles: (obs: ObstacleConfig[]) => void;
+    sharedRobot?: SharedRobotState;
+    setSharedRobot: (robot: SharedRobotState) => void;
     status: CrdtStatus;
 };
 
 export const CrdtWorldContext = createContext<CrdtWorldContextValue>({
     obstacles: [],
     setObstacles: () => { },
+    setSharedRobot: () => { },
     status: 'connecting',
 });
 
@@ -38,8 +49,18 @@ export function CrdtWorldProvider({ children }: { children: React.ReactNode }) {
         if (proxy) proxy.state.obstacles = obs;
     }, [proxy]);
 
+    const setSharedRobot = useCallback((robot: SharedRobotState) => {
+        if (proxy) proxy.state.sharedRobot = robot;
+    }, [proxy]);
+
     return (
-        <CrdtWorldContext.Provider value={{ obstacles: state.obstacles ?? [], setObstacles, status }}>
+        <CrdtWorldContext.Provider value={{
+            obstacles: state.obstacles ?? [],
+            setObstacles,
+            sharedRobot: state.sharedRobot,
+            setSharedRobot,
+            status
+        }}>
             {children}
         </CrdtWorldContext.Provider>
     );

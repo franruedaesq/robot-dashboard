@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react';
 import type { RapierRigidBody } from '@react-three/rapier';
-import { useRapier } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import type { RobotPose } from '../types';
 import { SENSOR_HZ, LIDAR_RAYS, LIDAR_MAX_DIST } from '../constants';
 import { useSimulationLoop } from '../contexts/HeadlessContext';
 import { tfTree, Transform, Vec3 } from '../utils/tf';
+import { useSpatialEngineContext } from '../contexts/SpatialEngineContext';
+import { RAY_STRIDE } from '@spatial-engine/core';
 
 function gaussianRandom(mean = 0, stdev = 1) {
     const u = 1 - Math.random();
@@ -20,9 +21,13 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }
     onPoseUpdate?: (p: RobotPose) => void;
     robotIndex?: number;
 }) {
-    const { world, rapier } = useRapier();
+    const { octree } = useSpatialEngineContext();
     const lastTime = useRef(0);
     const topicRef = useRef<ROSLIB.Topic<any> | null>(null);
+
+    // Pre-allocate a single flat Float32Array to hold the ray data (ox,oy,oz,dx,dy,dz) 
+    // to avoid triggering garbage collection during the high-frequency sweep.
+    const rayBuffer = useRef(new Float32Array(RAY_STRIDE));
 
     useEffect(() => {
         if (!ros) return;
@@ -77,24 +82,26 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }
             const dirX = Math.sin(angle);
             const dirZ = Math.cos(angle);
 
-            // Origin is now based purely on the tf-engine reported center point, rather
-            // than manually reconstructing the offset. We still push it out by ROBOT_RADIUS
-            // to avoid hitting the robot's own collider box.
-            const originObj = { x: lidarPos.x + dirX * ROBOT_RADIUS, y: lidarPos.y, z: lidarPos.z + dirZ * ROBOT_RADIUS };
-            const dirObj = { x: dirX, y: 0, z: dirZ };
-            const ray = new rapier.Ray(originObj, dirObj);
+            const originX = lidarPos.x + dirX * ROBOT_RADIUS;
+            const originY = lidarPos.y;
+            const originZ = lidarPos.z + dirZ * ROBOT_RADIUS;
 
-            // solid = true means we hit inside of colliders.
-            const hit = world.castRay(ray, LIDAR_MAX_DIST - ROBOT_RADIUS, true, undefined, undefined, undefined, undefined);
+            // Load ray into fixed buffer [ox, oy, oz, dx, dy, dz]
+            const buf = rayBuffer.current;
+            buf[0] = originX;
+            buf[1] = originY;
+            buf[2] = originZ;
+            buf[3] = dirX;
+            buf[4] = 0;
+            buf[5] = dirZ;
+
+            const hit = octree.raycast(buf, 0);
 
             const dropped = Math.random() < 0.005;
             let dist = LIDAR_MAX_DIST;
 
-            if (!dropped && hit) {
-                const rawToi = (hit as any).toi ?? (hit as any).timeOfImpact;
-                if (rawToi != null) {
-                    dist = rawToi + ROBOT_RADIUS;
-                }
+            if (!dropped && hit && hit.t < LIDAR_MAX_DIST - ROBOT_RADIUS) {
+                dist = hit.t + ROBOT_RADIUS;
             }
 
             if (dist < LIDAR_MAX_DIST) {

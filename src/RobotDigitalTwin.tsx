@@ -22,6 +22,9 @@ import { HeadlessContext } from './contexts/HeadlessContext';
 import { useCrdtWorld } from './contexts/CrdtWorldContext';
 import { HeadlessEngine } from './components/HeadlessEngine';
 import { getRobotConfig, updateRobotConfig } from './utils/storage';
+import { useOctree } from '@spatial-engine/react';
+import type { OctreeOptions } from '@spatial-engine/react';
+import { SpatialEngineContext } from './contexts/SpatialEngineContext';
 
 // ─────────────────────────────────────────────
 // Velocity helpers
@@ -156,6 +159,69 @@ function CameraManager({ pose, resetTrigger, heightOffset = 0, cameraFollow = tr
 }
 
 // ─────────────────────────────────────────────
+// PhysicsWorld — keyed per worldKey so the octree
+// is fully reset on every scenario switch.
+// ─────────────────────────────────────────────
+const OCTREE_OPTIONS: OctreeOptions = { nodeCapacity: 1024, objectCapacity: 2048 };
+
+interface PhysicsWorldProps {
+    obstacles: ObstacleConfig[];
+    parsed: ReturnType<typeof parseUrdf>;
+    metrics: { spawnY: number; size: [number, number, number] };
+    visualYOffset: number;
+    velocity: { linear: number; angular: number };
+    ros: ROSLIB.Ros | null;
+    simLidarEnabled: boolean;
+    simCamEnabled: boolean;
+    simJointsEnabled: boolean;
+    thumbnailCanvasRef: React.RefObject<HTMLCanvasElement | null>;
+    camHttpEndpoint: string;
+    expandedCanvasRef: React.RefObject<HTMLCanvasElement | null>;
+    onPoseUpdate: (pose: RobotPose) => void;
+    batchSize: number;
+    isHeadless: boolean;
+}
+
+function PhysicsWorld({
+    obstacles, parsed, metrics, visualYOffset, velocity, ros,
+    simLidarEnabled, simCamEnabled, simJointsEnabled,
+    thumbnailCanvasRef, camHttpEndpoint, expandedCanvasRef,
+    onPoseUpdate, batchSize, isHeadless,
+}: PhysicsWorldProps) {
+    const spatialHandle = useOctree(OCTREE_OPTIONS);
+    // The root node AABB must be set before any inserts; without this the
+    // octree cannot subdivide (mid-points are all zero) and every object
+    // piles up in node 0 until MAX_OBJECTS_PER_NODE is exceeded.
+    // Bounds match the 40 × 40 floor mesh plus generous vertical headroom.
+    spatialHandle.octree.setBounds(-22, -2, -22, 22, 6, 22);
+
+    return (
+        <SpatialEngineContext.Provider value={spatialHandle}>
+            <Physics gravity={[0, -9.81, 0]} paused={isHeadless}>
+                <HeadlessEngine />
+                <World obstacles={obstacles} />
+                {Array.from({ length: batchSize }).map((_, i) => (
+                    <RobotPhysicsBody
+                        key={`robot-${i}`}
+                        robotIndex={i}
+                        parsed={parsed ? { ...parsed, spawnY: metrics.spawnY, size: metrics.size, visualYOffset } : null}
+                        velocity={velocity}
+                        ros={ros}
+                        simLidarEnabled={simLidarEnabled}
+                        simCamEnabled={simCamEnabled && i === 0}
+                        simJointsEnabled={simJointsEnabled}
+                        thumbnailCanvasRef={thumbnailCanvasRef}
+                        camHttpEndpoint={camHttpEndpoint || undefined}
+                        expandedCanvasRef={expandedCanvasRef}
+                        onPoseUpdate={i === 0 ? onPoseUpdate : undefined}
+                    />
+                ))}
+            </Physics>
+        </SpatialEngineContext.Provider>
+    );
+}
+
+// ─────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────
 const defaultRobot = PRELOADED_ROBOTS[0];
@@ -163,6 +229,7 @@ const defaultRobot = PRELOADED_ROBOTS[0];
 export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const isMobile = useIsMobile();
     const { isHeadless, setIsHeadless, timeScale, setTimeScale, batchSize, setBatchSize, metrics: rlMetrics } = useContext(HeadlessContext);
+
     // ── URDF / robot state ───────────────────────────────────────────────────
     const [urdfText, setUrdfText] = useState<string>(defaultRobot.urdf);
     const [pkgMap, setPkgMap] = useState<PackageMap>(defaultRobot.pkgMap);
@@ -402,26 +469,24 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
 
                     <CameraManager pose={pose} resetTrigger={cameraResetTrigger} heightOffset={cameraHeightOffset} cameraFollow={cameraFollow} />
 
-                    <Physics key={worldKey} gravity={[0, -9.81, 0]} paused={isHeadless}>
-                        <HeadlessEngine />
-                        <World obstacles={obstacles} />
-                        {Array.from({ length: batchSize }).map((_, i) => (
-                            <RobotPhysicsBody
-                                key={`robot-${i}`}
-                                robotIndex={i}
-                                parsed={parsed ? { ...parsed, spawnY: metrics.spawnY, size: metrics.size, visualYOffset } : null}
-                                velocity={velocity}
-                                ros={ros}
-                                simLidarEnabled={simLidarEnabled}
-                                simCamEnabled={simCamEnabled && i === 0}
-                                simJointsEnabled={simJointsEnabled}
-                                thumbnailCanvasRef={thumbnailCanvasRef}
-                                camHttpEndpoint={camHttpEndpoint || undefined}
-                                expandedCanvasRef={expandedCanvasRef}
-                                onPoseUpdate={i === 0 ? setPose : undefined}
-                            />
-                        ))}
-                    </Physics>
+                    <PhysicsWorld
+                        key={worldKey}
+                        obstacles={obstacles}
+                        parsed={parsed}
+                        metrics={metrics}
+                        visualYOffset={visualYOffset}
+                        velocity={velocity}
+                        ros={ros}
+                        simLidarEnabled={simLidarEnabled}
+                        simCamEnabled={simCamEnabled}
+                        simJointsEnabled={simJointsEnabled}
+                        thumbnailCanvasRef={thumbnailCanvasRef}
+                        camHttpEndpoint={camHttpEndpoint}
+                        expandedCanvasRef={expandedCanvasRef}
+                        onPoseUpdate={setPose}
+                        batchSize={batchSize}
+                        isHeadless={isHeadless}
+                    />
 
                     {/* Ghost preview + floor raycasting for placement */}
                     <PlacementOverlay

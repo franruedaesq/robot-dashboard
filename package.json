@@ -13,11 +13,14 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@crdt-sync/core": "^0.3.2",
-    "@crdt-sync/react": "^0.3.2",
+    "@crdt-sync/core": "^0.3.4",
+    "@crdt-sync/react": "^0.3.4",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@react-three/rapier": "^2.2.0",
+    "@spatial-engine/core": "^0.0.4",
+    "@spatial-engine/react": "^0.0.4",
+    "@spatial-engine/three": "^0.0.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "roslib": "^2.0.1",

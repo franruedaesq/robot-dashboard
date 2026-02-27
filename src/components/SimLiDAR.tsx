@@ -4,7 +4,8 @@ import * as ROSLIB from 'roslib';
 import type { RobotPose } from '../types';
 import { SENSOR_HZ, LIDAR_RAYS, LIDAR_MAX_DIST } from '../constants';
 import { useSimulationLoop } from '../contexts/HeadlessContext';
-import { tfTree, Transform, Vec3 } from '../utils/tf';
+import { Transform, Vec3 } from '@tf-engine/core';
+import { useTFEngine } from '../contexts/TFEngineContext';
 import { useSpatialEngineContext } from '../contexts/SpatialEngineContext';
 import { RAY_STRIDE } from '@spatial-engine/core';
 
@@ -22,6 +23,7 @@ export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }
     robotIndex?: number;
 }) {
     const { octree } = useSpatialEngineContext();
+    const tfTree = useTFEngine();
     const lastTime = useRef(0);
     const topicRef = useRef<ROSLIB.Topic<any> | null>(null);
 

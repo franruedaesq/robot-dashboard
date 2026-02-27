@@ -14,6 +14,7 @@ import { SPAWN_Y, DEFAULT_SCALE, DEFAULT_COLOR } from './scenarios/presets';
 import { World } from './components/World';
 import { RobotPhysicsBody } from './components/RobotPhysicsBody';
 import { RobotSelectorPanel } from './components/RobotSelectorPanel';
+import { TrajectoryBuilder, type Trajectory } from 'ts-trajectory';
 import { RealLiDARPanel } from './components/RealLiDARPanel';
 import { PlacementOverlay } from './components/PlacementOverlay';
 import { WorldEditorPanel } from './components/WorldEditorPanel';
@@ -99,6 +100,7 @@ function CameraManager({ pose, resetTrigger, heightOffset = 0, cameraFollow = tr
 
     const prevTrigger = useRef(resetTrigger);
     const prevHeight = useRef(heightOffset);
+    const activeTrajectory = useRef<{ trajCam: Trajectory, trajTarget: Trajectory, start: number } | null>(null);
 
     useEffect(() => {
         if (!controls) return;
@@ -106,34 +108,64 @@ function CameraManager({ pose, resetTrigger, heightOffset = 0, cameraFollow = tr
             setAnimating(true);
             prevTrigger.current = resetTrigger;
             prevHeight.current = heightOffset;
+
+            // Generate a cinematic trajectory for the camera reset
+            const builder = new TrajectoryBuilder();
+            const r_controls = controls as any;
+
+            const idealTarget = [pose.x, pose.y + 0.3 + heightOffset, pose.z];
+            const idealCamPos = [pose.x + 1.5, pose.y + 1.5 + heightOffset, pose.z + 2.0];
+
+            const currentTarget = [r_controls.target.x, r_controls.target.y, r_controls.target.z];
+            const currentCamPos = [camera.position.x, camera.position.y, camera.position.z];
+
+            const trajCam = builder.plan([
+                { time: 0, positions: currentCamPos },
+                { time: 0.8, positions: idealCamPos } // 0.8s cinematic cinematic transition
+            ], { interpolationType: 'cubic' });
+
+            const trajTarget = builder.plan([
+                { time: 0, positions: currentTarget },
+                { time: 0.8, positions: idealTarget }
+            ], { interpolationType: 'cubic' });
+
+            activeTrajectory.current = { trajCam, trajTarget, start: performance.now() };
         }
-    }, [resetTrigger, heightOffset, controls]);
+    }, [resetTrigger, heightOffset, controls, camera, pose.x, pose.y, pose.z]);
 
     useFrame((_, delta) => {
         if (!controls) return;
         const r_controls = controls as any;
-        const speed = 1.0 - Math.exp(-6 * delta);
 
-        // The target the robot is actually at right now
-        const idealTarget = new THREE.Vector3(pose.x, pose.y + 0.3 + heightOffset, pose.z);
+        if (animating && activeTrajectory.current) {
+            const { trajCam, trajTarget, start } = activeTrajectory.current;
+            const elapsed = (performance.now() - start) / 1000;
+            const duration = trajCam.getDuration();
 
-        if (animating) {
-            // Isometric perspective relative to robot
-            const idealCamPos = new THREE.Vector3(pose.x + 1.5, pose.y + 1.5 + heightOffset, pose.z + 2.0);
+            if (elapsed < duration) {
+                const camPos = trajCam.sample(elapsed);
+                const targetPos = trajTarget.sample(elapsed);
 
-            camera.position.lerp(idealCamPos, speed);
-            r_controls.target.lerp(idealTarget, speed);
-            r_controls.update();
+                camera.position.set(camPos[0], camPos[1], camPos[2]);
+                r_controls.target.set(targetPos[0], targetPos[1], targetPos[2]);
+                r_controls.update();
+            } else {
+                // Snap to final frame and end animation
+                const camPos = trajCam.sample(duration);
+                const targetPos = trajTarget.sample(duration);
 
-            // Stop animating once we are close enough
-            if (
-                camera.position.distanceToSquared(idealCamPos) < 0.001 &&
-                r_controls.target.distanceToSquared(idealTarget) < 0.001
-            ) {
+                camera.position.set(camPos[0], camPos[1], camPos[2]);
+                r_controls.target.set(targetPos[0], targetPos[1], targetPos[2]);
+                r_controls.update();
+
                 setAnimating(false);
+                activeTrajectory.current = null;
             }
         }
-        else if (cameraFollow) {
+        else if (cameraFollow && !animating) {
+            // The target the robot is actually at right now
+            const idealTarget = new THREE.Vector3(pose.x, pose.y + 0.3 + heightOffset, pose.z);
+
             // Smoothly track the target without changing the user's rotation/zoom
             const diff = new THREE.Vector3().subVectors(idealTarget, r_controls.target);
 

@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import * as ROSLIB from 'roslib';
+import { TrajectoryBuilder, type Trajectory } from 'ts-trajectory';
 import type { ParsedRobot } from '../types';
 import { getRobotConfig, updateRobotConfig } from '../utils/storage';
 
 export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros: ROSLIB.Ros | null }) {
+    const activeTrajectories = useRef<Map<string, { traj: Trajectory, startTime: number }>>(new Map());
     // Extract joints that can be controlled (revolute, continuous, prismatic)
     const joints = useMemo(() => {
         if (!parsed?.root) return [];
@@ -55,6 +57,36 @@ export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros
         });
     }, [joints, parsed]);
 
+    // Animation loop for smooth joint transitions
+    useEffect(() => {
+        let frameId: number;
+        const animate = (time: number) => {
+            const jointsMap = (parsed?.root as any)?.joints;
+
+            activeTrajectories.current.forEach((data, jointName) => {
+                const elapsed = (time - data.startTime) / 1000;
+                const duration = data.traj.getDuration();
+
+                if (jointsMap && jointsMap[jointName]) {
+                    const pos = data.traj.sample(elapsed);
+                    jointsMap[jointName].setJointValue(pos[0]);
+                }
+
+                if (elapsed >= duration) {
+                    activeTrajectories.current.delete(jointName);
+                    // Ensure it snaps exactly to final target when done
+                    if (jointsMap && jointsMap[jointName]) {
+                        const finalPos = data.traj.sample(duration);
+                        jointsMap[jointName].setJointValue(finalPos[0]);
+                    }
+                }
+            });
+            frameId = requestAnimationFrame(animate);
+        };
+        frameId = requestAnimationFrame(animate);
+        return () => cancelAnimationFrame(frameId);
+    }, [parsed]);
+
     // Publish trajectory command to ROS
     const publishTrajectory = useCallback((name: string, val: number) => {
         if (!ros) return;
@@ -96,11 +128,19 @@ export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros
                                 setValues(prev => ({ ...prev, [j.name]: v }));
                                 publishTrajectory(j.name, v);
 
-                                // Immediate local feedback for the UI model
+                                // Smooth local feedback for the UI model via ts-trajectory
                                 const jointsMap = (parsed?.root as any)?.joints;
-                                if (jointsMap && jointsMap[j.name]) {
-                                    jointsMap[j.name].setJointValue(v);
-                                }
+                                const currentVal = jointsMap && jointsMap[j.name]
+                                    ? (jointsMap[j.name] as any).jointValue?.[0] ?? values[j.name] ?? 0
+                                    : values[j.name] ?? 0;
+
+                                const builder = new TrajectoryBuilder();
+                                const traj = builder.plan([
+                                    { time: 0, positions: [currentVal] },
+                                    { time: 0.5, positions: [v] } // Match the 0.5s used in ROS publish
+                                ], { interpolationType: 'cubic' });
+
+                                activeTrajectories.current.set(j.name, { traj, startTime: performance.now() });
 
                                 const config = getRobotConfig(parsed?.name);
                                 const newJoints = { ...(config.joints || {}), [j.name]: v };

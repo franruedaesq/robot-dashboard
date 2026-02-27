@@ -1,0 +1,9 @@
+services:
+  ros_robot:
+    build: .
+    platform: linux/amd64
+    container_name: mi_ros2_humble_auto
+    ports:
+      - "9090:9090"
+      - "8080:8080"
+    restart: always

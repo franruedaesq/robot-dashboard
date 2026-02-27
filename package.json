@@ -28,6 +28,7 @@
     "react-dom": "^19.2.0",
     "roslib": "^2.0.1",
     "three": "^0.183.1",
+    "ts-trajectory": "^0.1.1",
     "urdf-loader": "^0.12.6",
     "ws": "^8.19.0"
   },

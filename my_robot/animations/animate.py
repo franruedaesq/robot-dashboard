@@ -11,7 +11,7 @@ Usage (inside Docker):
 How it works:
   Each animation is defined as a list of keyframes: (time_sec, {joint: position}).
   The player interpolates between keyframes at 30Hz using cubic easing and
-  publishes to /joint_states so the browser's Live feedback (+ ts-trajectory)
+  publishes to /joint_commands so the browser's Live feedback (+ ts-trajectory)
   renders it smoothly.
 """
 
@@ -198,7 +198,7 @@ class AnimationPlayer(Node):
 
     def __init__(self, animation_name: str):
         super().__init__("animation_player")
-        self.pub = self.create_publisher(JointState, "/joint_states", 10)
+        self.pub = self.create_publisher(JointState, "/joint_commands", 10)
         self.animation_name = animation_name
 
     def play(self, keyframes):

@@ -1,7 +1,7 @@
 #!/bin/bash
 # 🧘 Estiramiento — brazos arriba, abrir, bajar lentamente
 source /opt/ros/humble/setup.bash
-PUB="timeout 2 ros2 topic pub --once /joint_states sensor_msgs/msg/JointState"
+PUB="timeout 2 ros2 topic pub --once /joint_commands sensor_msgs/msg/JointState"
 
 echo "🧘 Estirando hacia arriba..."
 $PUB '{name: ["l_shoulder_pitch","r_shoulder_pitch","l_elbow","r_elbow","torso_pitch"], position: [-1.0, -1.0, 0.2, 0.2, 0.1]}'

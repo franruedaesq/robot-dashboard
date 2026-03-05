@@ -10,6 +10,7 @@ import { findJoint } from '../utils/urdf';
 import { OdometryPublisher } from './OdometryPublisher';
 import { SimLiDAR } from './SimLiDAR';
 import { SimCamera } from './SimCamera';
+import { JointStatePublisher } from './JointStatePublisher';
 import { Transform, Vec3, Quaternion } from '@tf-engine/core';
 import { useTFEngine } from '../contexts/TFEngineContext';
 
@@ -154,11 +155,11 @@ export const RobotPhysicsBody = forwardRef<THREE.Group, {
         }
     });
 
-    // ── Subscribe to /joint_states ──────────────────────────────────────────
+    // ── Subscribe to /joint_commands ──────────────────────────────────────────
     useEffect(() => {
         if (!ros || !parsed?.root || !simJointsEnabled) return;
         const root = parsed.root;
-        const topicName = robotIndex === 0 ? '/joint_states' : `/robot_${robotIndex}/joint_states`;
+        const topicName = robotIndex === 0 ? '/joint_commands' : `/robot_${robotIndex}/joint_commands`;
         const topic = new ROSLIB.Topic({
             ros,
             name: topicName,
@@ -197,6 +198,7 @@ export const RobotPhysicsBody = forwardRef<THREE.Group, {
                 )}
             </group>
             <OdometryPublisher bodyRef={poseRef as any} ros={ros} robotIndex={robotIndex} />
+            <JointStatePublisher parsed={parsed as any} ros={ros} simJointsEnabled={simJointsEnabled} robotIndex={robotIndex} />
             <SimLiDAR bodyRef={poseRef as any} ros={ros} enabled={simLidarEnabled} onPoseUpdate={onPoseUpdate} robotIndex={robotIndex} />
             <SimCamera bodyRef={poseRef as any} ros={ros} enabled={simCamEnabled} thumbnailCanvasRef={thumbnailCanvasRef} httpEndpoint={camHttpEndpoint} expandedCanvasRef={expandedCanvasRef} />
         </>

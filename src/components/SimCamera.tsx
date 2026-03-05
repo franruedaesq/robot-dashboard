@@ -1,12 +1,12 @@
 import { useEffect, useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import type { RapierRigidBody } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import * as THREE from 'three';
 import { SENSOR_HZ, CAM_W, CAM_H } from '../constants';
+import type { PoseRef } from './RobotPhysicsBody';
 
 export function SimCamera({ bodyRef, ros, enabled, thumbnailCanvasRef, httpEndpoint, expandedCanvasRef }: {
-    bodyRef: React.RefObject<RapierRigidBody | null>;
+    bodyRef: React.RefObject<PoseRef | null>;
     ros: ROSLIB.Ros | null;
     enabled: boolean;
     thumbnailCanvasRef: React.RefObject<HTMLCanvasElement | null>;

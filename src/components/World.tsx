@@ -1,4 +1,3 @@
-import { RigidBody } from '@react-three/rapier';
 import { Grid } from '@react-three/drei';
 import { useRef, useEffect } from 'react';
 import * as THREE from 'three';
@@ -26,13 +25,11 @@ export function World({ obstacles = [] }: { obstacles?: ObstacleConfig[] }) {
 
     return (
         <group name="sim_environment">
-            {/* Floor */}
-            <RigidBody type="fixed" colliders="cuboid">
-                <mesh ref={floorRef} receiveShadow position={[0, -0.05, 0]}>
-                    <boxGeometry args={[40, 0.1, 40]} />
-                    <meshStandardMaterial color="#7a7570" roughness={0.9} metalness={0.02} />
-                </mesh>
-            </RigidBody>
+            {/* Floor — visual only, physics is on the server */}
+            <mesh ref={floorRef} receiveShadow position={[0, -0.05, 0]}>
+                <boxGeometry args={[40, 0.1, 40]} />
+                <meshStandardMaterial color="#7a7570" roughness={0.9} metalness={0.02} />
+            </mesh>
 
             {/* Grid overlay */}
             <Grid
@@ -42,7 +39,7 @@ export function World({ obstacles = [] }: { obstacles?: ObstacleConfig[] }) {
                 fadeDistance={30} infiniteGrid
             />
 
-            {/* Dynamic / scenario obstacles */}
+            {/* Dynamic / scenario obstacles (visual only) */}
             {obstacles.map(obs => (
                 <DynamicObstacle key={obs.id} obs={obs} />
             ))}

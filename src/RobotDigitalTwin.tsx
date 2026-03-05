@@ -1,7 +1,6 @@
 import { useState, useRef, useMemo, useCallback, useEffect, useContext } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import * as THREE from 'three';
 
@@ -21,7 +20,7 @@ import { WorldEditorPanel } from './components/WorldEditorPanel';
 import { RobotArmPanel } from './components/RobotArmPanel';
 import { HeadlessContext } from './contexts/HeadlessContext';
 import { useCrdtWorld } from './contexts/CrdtWorldContext';
-import { HeadlessEngine } from './components/HeadlessEngine';
+import { useServerPhysics } from './contexts/ServerPhysicsContext';
 import { getRobotConfig, updateRobotConfig } from './utils/storage';
 import { useOctree } from '@spatial-engine/react';
 import type { OctreeOptions } from '@spatial-engine/react';
@@ -211,14 +210,13 @@ interface PhysicsWorldProps {
     expandedCanvasRef: React.RefObject<HTMLCanvasElement | null>;
     onPoseUpdate: (pose: RobotPose) => void;
     batchSize: number;
-    isHeadless: boolean;
 }
 
 function PhysicsWorld({
     obstacles, parsed, metrics, visualYOffset, velocity, ros,
     simLidarEnabled, simCamEnabled, simJointsEnabled,
     thumbnailCanvasRef, camHttpEndpoint, expandedCanvasRef,
-    onPoseUpdate, batchSize, isHeadless,
+    onPoseUpdate, batchSize,
 }: PhysicsWorldProps) {
     const spatialHandle = useOctree(OCTREE_OPTIONS);
     // The root node AABB must be set before any inserts; without this the
@@ -229,26 +227,24 @@ function PhysicsWorld({
 
     return (
         <SpatialEngineContext.Provider value={spatialHandle}>
-            <Physics gravity={[0, -9.81, 0]} paused={isHeadless}>
-                <HeadlessEngine />
-                <World obstacles={obstacles} />
-                {Array.from({ length: batchSize }).map((_, i) => (
-                    <RobotPhysicsBody
-                        key={`robot-${i}`}
-                        robotIndex={i}
-                        parsed={parsed ? { ...parsed, spawnY: metrics.spawnY, size: metrics.size, visualYOffset } : null}
-                        velocity={velocity}
-                        ros={ros}
-                        simLidarEnabled={simLidarEnabled}
-                        simCamEnabled={simCamEnabled && i === 0}
-                        simJointsEnabled={simJointsEnabled}
-                        thumbnailCanvasRef={thumbnailCanvasRef}
-                        camHttpEndpoint={camHttpEndpoint || undefined}
-                        expandedCanvasRef={expandedCanvasRef}
-                        onPoseUpdate={i === 0 ? onPoseUpdate : undefined}
-                    />
-                ))}
-            </Physics>
+            {/* Physics is now server-authoritative — no <Physics> wrapper needed */}
+            <World obstacles={obstacles} />
+            {Array.from({ length: batchSize }).map((_, i) => (
+                <RobotPhysicsBody
+                    key={`robot-${i}`}
+                    robotIndex={i}
+                    parsed={parsed ? { ...parsed, spawnY: metrics.spawnY, size: metrics.size, visualYOffset } : null}
+                    velocity={velocity}
+                    ros={ros}
+                    simLidarEnabled={simLidarEnabled}
+                    simCamEnabled={simCamEnabled && i === 0}
+                    simJointsEnabled={simJointsEnabled}
+                    thumbnailCanvasRef={thumbnailCanvasRef}
+                    camHttpEndpoint={camHttpEndpoint || undefined}
+                    expandedCanvasRef={expandedCanvasRef}
+                    onPoseUpdate={i === 0 ? onPoseUpdate : undefined}
+                />
+            ))}
         </SpatialEngineContext.Provider>
     );
 }
@@ -261,6 +257,7 @@ const defaultRobot = PRELOADED_ROBOTS[0];
 export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     const isMobile = useIsMobile();
     const { isHeadless, setIsHeadless, timeScale, setTimeScale, batchSize, setBatchSize, metrics: rlMetrics } = useContext(HeadlessContext);
+    const { sendCmdVel, connected: physicsConnected } = useServerPhysics();
 
     // ── URDF / robot state ───────────────────────────────────────────────────
     const [urdfText, setUrdfText] = useState<string>(defaultRobot.urdf);
@@ -298,11 +295,15 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
     rosRef.current = ros;
 
     const publishVel = useCallback((vel: Velocity) => {
+        // Send to server physics engine (primary)
+        sendCmdVel(vel.linear, vel.angular);
+
+        // Also publish to ROS for external consumers
         const r = rosRef.current;
         if (!r) return;
         const topic = new ROSLIB.Topic({ ros: r, name: '/cmd_vel', messageType: 'geometry_msgs/Twist' });
         topic.publish({ linear: { x: vel.linear, y: 0, z: 0 }, angular: { x: 0, y: vel.angular, z: 0 } });
-    }, []);
+    }, [sendCmdVel]);
 
     const sendVel = useCallback((vel: Velocity) => { setVelocity(vel); publishVel(vel); }, [publishVel]);
     const stop = useCallback(() => { setVelocity(STOP); publishVel(STOP); }, [publishVel]);
@@ -346,9 +347,13 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
 
         const cb = (message: any) => {
             if (message?.linear && message?.angular) {
+                const newLin = message.linear.x;
+                const newAng = message.angular.z;
+
+                // Forward to server physics engine
+                sendCmdVel(newLin, newAng);
+
                 setVelocity(prev => {
-                    const newLin = message.linear.x;
-                    const newAng = message.angular.z;
                     // Prevent unnecessary state updates if values are identical
                     if (prev.linear === newLin && prev.angular === newAng) return prev;
                     return { linear: newLin, angular: newAng };
@@ -358,7 +363,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
 
         cmdVelTopic.subscribe(cb);
         return () => cmdVelTopic.unsubscribe(cb);
-    }, [ros]);
+    }, [ros, sendCmdVel]);
 
     // ── Sensor detection from URDF ───────────────────────────────────────────
     const detectedSensors = useMemo<DetectedSensor[]>(() => parseSensors(urdfText), [urdfText]);
@@ -487,6 +492,15 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
 
     return (
         <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? '8px' : '16px', flex: 1, minHeight: 0, minWidth: 0, width: '100%', height: '100%' }}>
+            {/* Physics connection indicator */}
+            {!physicsConnected && (
+                <div style={{
+                    position: 'fixed', top: 8, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+                    backgroundColor: 'rgba(200,50,50,0.9)', color: '#fff',
+                    padding: '4px 16px', borderRadius: 6,
+                    fontFamily: 'monospace', fontSize: '0.75rem',
+                }}>⚠️ Physics server disconnected — waiting for ws://localhost:8003</div>
+            )}
 
             {/* ── Left Side: 3D Canvas ────────────────────────────────────────── */}
             <div style={{
@@ -551,7 +565,6 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                         expandedCanvasRef={expandedCanvasRef}
                         onPoseUpdate={setPose}
                         batchSize={batchSize}
-                        isHeadless={isHeadless}
                     />
 
                     {/* Ghost preview + floor raycasting for placement */}

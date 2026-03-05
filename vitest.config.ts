@@ -15,7 +15,7 @@ export default defineConfig({
                 // pipeline so vite-plugin-wasm can handle the .wasm import.
                 // Without this, node_modules are loaded raw by Node.js and .wasm
                 // imports fail with "Unknown file extension".
-                inline: ['@tf-engine/core'],
+                inline: ['@tf-engine/core', '@nexus-physics/core'],
             },
         },
     },

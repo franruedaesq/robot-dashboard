@@ -4,7 +4,7 @@ import RobotDigitalTwin from './RobotDigitalTwin';
 import { useIsMobile } from './utils/media';
 import { HeadlessProvider } from './contexts/HeadlessContext';
 import { CrdtWorldProvider } from './contexts/CrdtWorldContext';
-
+import { ServerPhysicsProvider } from './contexts/ServerPhysicsContext';
 import { TFEngineProvider } from './contexts/TFEngineContext';
 
 function App() {
@@ -24,29 +24,31 @@ function App() {
   const connected = status.includes('🟢');
 
   return (
-    <HeadlessProvider>
-      <TFEngineProvider>
-        <CrdtWorldProvider>
-          <div style={{
-            fontFamily: 'Inter, sans-serif',
-            backgroundColor: '#0d0d1a',
-            height: '100vh', minHeight: '100vh', color: 'white',
-            padding: isMobile ? '8px' : '16px', boxSizing: 'border-box',
-            display: 'flex', flexDirection: 'column',
-            overflow: 'hidden'
-          }}>
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              <h1 style={{ fontSize: '1.6rem', margin: '0 0 4px' }}>Panel de Control Robótico 🤖</h1>
-              <p style={{ fontSize: '0.85rem', color: connected ? '#2ecc71' : '#e74c3c', margin: '0 0 0px', fontWeight: 400 }}>
-                Estado ROS: {status}
-              </p>
-            </div>
+    <ServerPhysicsProvider>
+      <HeadlessProvider>
+        <TFEngineProvider>
+          <CrdtWorldProvider>
+            <div style={{
+              fontFamily: 'Inter, sans-serif',
+              backgroundColor: '#0d0d1a',
+              height: '100vh', minHeight: '100vh', color: 'white',
+              padding: isMobile ? '8px' : '16px', boxSizing: 'border-box',
+              display: 'flex', flexDirection: 'column',
+              overflow: 'hidden'
+            }}>
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <h1 style={{ fontSize: '1.6rem', margin: '0 0 4px' }}>Panel de Control Robótico 🤖</h1>
+                <p style={{ fontSize: '0.85rem', color: connected ? '#2ecc71' : '#e74c3c', margin: '0 0 0px', fontWeight: 400 }}>
+                  Estado ROS: {status}
+                </p>
+              </div>
 
-            {ros && <RobotDigitalTwin ros={ros} />}
-          </div>
-        </CrdtWorldProvider>
-      </TFEngineProvider>
-    </HeadlessProvider>
+              {ros && <RobotDigitalTwin ros={ros} />}
+            </div>
+          </CrdtWorldProvider>
+        </TFEngineProvider>
+      </HeadlessProvider>
+    </ServerPhysicsProvider>
   );
 }
 

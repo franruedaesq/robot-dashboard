@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import type { RapierRigidBody } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import type { RobotPose } from '../types';
 import { SENSOR_HZ, LIDAR_RAYS, LIDAR_MAX_DIST } from '../constants';
@@ -8,6 +7,7 @@ import { Transform, Vec3 } from '@tf-engine/core';
 import { useTFEngine } from '../contexts/TFEngineContext';
 import { useSpatialEngineContext } from '../contexts/SpatialEngineContext';
 import { RAY_STRIDE } from '@spatial-engine/core';
+import type { PoseRef } from './RobotPhysicsBody';
 
 function gaussianRandom(mean = 0, stdev = 1) {
     const u = 1 - Math.random();
@@ -16,7 +16,7 @@ function gaussianRandom(mean = 0, stdev = 1) {
 }
 
 export function SimLiDAR({ bodyRef, ros, enabled, onPoseUpdate, robotIndex = 0 }: {
-    bodyRef: React.RefObject<RapierRigidBody | null>;
+    bodyRef: React.RefObject<PoseRef | null>;
     ros: ROSLIB.Ros | null;
     enabled: boolean;
     onPoseUpdate?: (p: RobotPose) => void;

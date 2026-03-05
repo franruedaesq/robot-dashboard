@@ -836,6 +836,7 @@ export default function RobotDigitalTwin({ ros }: { ros: ROSLIB.Ros | null }) {
                         onLoadScenario={handleLoadScenario}
                         onClearAll={handleClearAll}
                         onDeleteObstacle={handleDeleteObstacle}
+                        onResetRobot={() => setWorldKey(k => k + 1)}
                     />
 
                     {/* ── Robot selector ─────────────────────────────────────────────── */}

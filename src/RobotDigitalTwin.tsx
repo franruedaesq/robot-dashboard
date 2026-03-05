@@ -40,8 +40,8 @@ function keysToVelocity(held: Set<string>): Velocity {
     const rgt = held.has('ArrowRight') || held.has('d') || held.has('D');
     if (!fwd && !bwd && !lft && !rgt) return STOP;
     return {
-        linear: fwd ? 2.0 : bwd ? -2.0 : 0.5,
-        angular: lft ? 2.0 : rgt ? -2.0 : 0,
+        linear: fwd ? 2.0 : bwd ? -2.0 : 0.0,
+        angular: lft ? 2.0 : rgt ? -2.0 : 0.0,
     };
 }
 
@@ -85,7 +85,7 @@ function DPad({ onDown, onUp, style }: { onDown: (v: Velocity) => void; onUp: ()
             ...style
         }}>
             <span />{btn('⬆️', { linear: 2.0, angular: 0.0 })}<span />
-            {btn('↩️', { linear: 0.5, angular: 2.0 })}{stopBtn}{btn('↪️', { linear: 0.5, angular: -2.0 })}
+            {btn('↩️', { linear: 0.0, angular: 2.0 })}{stopBtn}{btn('↪️', { linear: 0.0, angular: -2.0 })}
             <span />{btn('⬇️', { linear: -2.0, angular: 0.0 })}<span />
         </div>
     );

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
-import type { RapierRigidBody } from '@react-three/rapier';
 import * as ROSLIB from 'roslib';
 import { ODOM_HZ } from '../constants';
 import { useSimulationLoop } from '../contexts/HeadlessContext';
 import { useTFEngine } from '../contexts/TFEngineContext';
+import type { PoseRef } from './RobotPhysicsBody';
 
 export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
-    bodyRef: React.RefObject<RapierRigidBody | null>;
+    bodyRef: React.RefObject<PoseRef | null>;
     ros: ROSLIB.Ros | null;
     robotIndex?: number;
 }) {
@@ -19,9 +19,6 @@ export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
         const topicName = robotIndex === 0 ? '/sim_odom' : `/robot_${robotIndex}/sim_odom`;
         topicRef.current = new ROSLIB.Topic<any>({ ros, name: topicName, messageType: 'nav_msgs/Odometry' });
 
-        // Save these in the ref or just use them in publish directly, 
-        // actually we can just store them as properties of the ref if it's a custom object.
-        // Let's just create a closure for publish.
         return () => { topicRef.current = null; };
     }, [ros, robotIndex]);
 
@@ -29,10 +26,10 @@ export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
         const body = bodyRef.current;
         if (!body) return;
 
-        // Use a simple accumulator for time since we don't have R3F clock in headless
+        // Use a simple accumulator for time
         lastTime.current += delta;
         if (lastTime.current < 1 / ODOM_HZ) return;
-        lastTime.current = 0; // Better to subtract but this is fine for simple sim
+        lastTime.current = 0;
 
         const frameId = robotIndex === 0 ? 'odom' : `robot_${robotIndex}/odom`;
         const childFrameId = robotIndex === 0 ? 'base_link' : `robot_${robotIndex}/base_link`;
@@ -45,7 +42,7 @@ export function OdometryPublisher({ bodyRef, ros, robotIndex = 0 }: {
             t = transform.translation;
             r = transform.rotation;
         } else {
-            // Fallback just in case
+            // Fallback
             t = body.translation();
             r = body.rotation();
         }

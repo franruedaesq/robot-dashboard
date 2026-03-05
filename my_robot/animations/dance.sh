@@ -1,7 +1,7 @@
 #!/bin/bash
 # 💃 Bailar — movimientos rítmicos del torso y brazos
 source /opt/ros/humble/setup.bash
-PUB="timeout 2 ros2 topic pub --once /joint_states sensor_msgs/msg/JointState"
+PUB="timeout 2 ros2 topic pub --once /joint_commands sensor_msgs/msg/JointState"
 
 echo "🎵 ¡A bailar!"
 

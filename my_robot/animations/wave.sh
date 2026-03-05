@@ -1,7 +1,7 @@
 #!/bin/bash
 # 🙋 Saludar con la mano derecha (Wave)
 source /opt/ros/humble/setup.bash
-PUB="timeout 2 ros2 topic pub --once /joint_states sensor_msgs/msg/JointState"
+PUB="timeout 2 ros2 topic pub --once /joint_commands sensor_msgs/msg/JointState"
 
 echo "🤖 Levantando brazo..."
 $PUB '{name: ["r_shoulder_pitch","r_shoulder_roll","r_elbow"], position: [-0.8, 1.0, 1.2]}'

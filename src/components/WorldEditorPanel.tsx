@@ -12,6 +12,7 @@ interface WorldEditorPanelProps {
     onLoadScenario:   (preset: ScenarioPreset) => void;
     onClearAll:       () => void;
     onDeleteObstacle: (id: string) => void;
+    onResetRobot:     () => void;
 }
 
 const TYPE_ICONS: Record<ObstacleType, string> = {
@@ -29,7 +30,7 @@ const TYPE_LABELS: Record<ObstacleType, string> = {
 export function WorldEditorPanel({
     obstacles, placingType, placingDynamic, placingRotation,
     onSelectType, onToggleDynamic, onToggleRotation,
-    onLoadScenario, onClearAll, onDeleteObstacle,
+    onLoadScenario, onClearAll, onDeleteObstacle, onResetRobot,
 }: WorldEditorPanelProps) {
 
     // ── Shared style tokens ──────────────────────────────────────────────────
@@ -82,11 +83,21 @@ export function WorldEditorPanel({
             {/* ── Scenarios ────────────────────────────────────────────────── */}
             <div style={sectionStyle}>
                 <div style={labelStyle}>Escenarios predefinidos</div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' as const, alignItems: 'center' }}>
                     {SCENARIO_PRESETS.map(p =>
                         btn(`${p.icon} ${p.label}`, false, () => onLoadScenario(p), '#2ecc71')
                     )}
                     {btn('🗑 Vaciar', false, onClearAll, '#e74c3c')}
+                    <button
+                        title="Volver al centro"
+                        onClick={onResetRobot}
+                        style={{
+                            padding: '5px 10px', fontSize: '0.82rem', cursor: 'pointer',
+                            backgroundColor: '#0d1220', color: '#8cf',
+                            border: '1px solid #2a3a5a', borderRadius: 6,
+                            transition: 'all 0.15s', lineHeight: 1,
+                        }}
+                    >⌖</button>
                 </div>
             </div>
 

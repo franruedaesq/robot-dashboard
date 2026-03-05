@@ -3,7 +3,7 @@
 source /opt/ros/humble/setup.bash
 
 # Publishers
-PUB_JOINT="timeout 2 ros2 topic pub --once /joint_states sensor_msgs/msg/JointState"
+PUB_JOINT="timeout 2 ros2 topic pub --once /joint_commands sensor_msgs/msg/JointState"
 PUB_CMD="timeout 2 ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist"
 
 echo "🚶‍♂️ Moviendo hacia adelante..."

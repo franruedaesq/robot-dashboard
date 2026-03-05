@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 
 export const HeadlessContext = createContext<{
@@ -39,36 +39,17 @@ export function HeadlessProvider({ children }: { children: React.ReactNode }) {
     );
 }
 
-class HeadlessSimulationManager {
-    static preStepSubscribers = new Set<(delta: number) => void>();
-    static postStepSubscribers = new Set<(delta: number) => void>();
-}
-
-export const HeadlessManager = HeadlessSimulationManager;
+// ── Simulation Loop ──────────────────────────────────────────────────────────
+// With server-authoritative physics, the simulation loop is simplified:
+// all physics stepping happens on the server. The frontend just uses useFrame
+// for rendering-driven callbacks (joint animation, sensor polling, etc.)
 
 export function useSimulationLoop(
     preStep?: (delta: number) => void,
     postStep?: (delta: number) => void
 ) {
-    const { isHeadless } = useContext(HeadlessContext);
-
-    // En modo normal, usamos useFrame.
     useFrame((_, delta) => {
-        if (!isHeadless) {
-            if (preStep) preStep(delta);
-            if (postStep) postStep(delta);
-        }
+        if (preStep) preStep(delta);
+        if (postStep) postStep(delta);
     });
-
-    // En modo headless nos suscribimos al manager global manual
-    useEffect(() => {
-        if (!isHeadless) return;
-        if (preStep) HeadlessManager.preStepSubscribers.add(preStep);
-        if (postStep) HeadlessManager.postStepSubscribers.add(postStep);
-
-        return () => {
-            if (preStep) HeadlessManager.preStepSubscribers.delete(preStep);
-            if (postStep) HeadlessManager.postStepSubscribers.delete(postStep);
-        };
-    }, [isHeadless, preStep, postStep]);
 }

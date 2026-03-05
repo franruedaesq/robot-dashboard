@@ -91,6 +91,34 @@ export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros
         return () => cancelAnimationFrame(frameId);
     }, [parsed]);
 
+    // Publish all current joint states to ROS
+    const publishJointStates = useCallback((currentValues: Record<string, number>) => {
+        if (!ros || !joints.length) return;
+
+        const topic = new ROSLIB.Topic({
+            ros,
+            name: '/joint_states',
+            messageType: 'sensor_msgs/JointState'
+        });
+
+        const names = joints.map(j => j.name);
+        const positions = names.map(name => currentValues[name] ?? 0);
+
+        topic.publish({
+            header: {
+                stamp: {
+                    secs: Math.floor(Date.now() / 1000),
+                    nsecs: (Date.now() % 1000) * 1000000
+                },
+                frame_id: ''
+            },
+            name: names,
+            position: positions,
+            velocity: [],
+            effort: []
+        });
+    }, [ros, joints]);
+
     // Publish trajectory command to ROS
     const publishTrajectory = useCallback((name: string, val: number) => {
         if (!ros) return;
@@ -189,7 +217,11 @@ export function RobotArmPanel({ parsed, ros }: { parsed: ParsedRobot | null; ros
                                 const v = parseFloat(e.target.value);
                                 // Mark this joint as manually changed to suppress /joint_states feedback briefly
                                 lastManualChange.current.set(j.name, performance.now());
-                                setValues(prev => ({ ...prev, [j.name]: v }));
+                                setValues(prev => {
+                                    const next = { ...prev, [j.name]: v };
+                                    publishJointStates(next);
+                                    return next;
+                                });
                                 publishTrajectory(j.name, v);
 
                                 // Smooth local feedback for the UI model via ts-trajectory

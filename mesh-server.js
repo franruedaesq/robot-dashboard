@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import http from 'http';
 import { WebSocketServer } from 'ws';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -29,19 +30,63 @@ app.listen(PORT, () => {
 });
 
 // ── CRDT Sync Relay (port 8002) ──────────────────────────────────────────────
-// Broadcasts incoming CRDT envelope JSON arrays to all other connected clients.
-const CRDT_PORT = 8002;
-const wss = new WebSocketServer({ port: CRDT_PORT });
+// The @crdt-sync/core WebSocketManager waits for a { type:"SNAPSHOT" } message
+// before it will flush any locally-queued envelopes to peers.  Without it,
+// _snapshotReceived stays false and obstacle updates are silently dropped.
+//
+// Protocol used by WebSocketManager:
+//   Server → Client:  { type: "SNAPSHOT", data: JSON.stringify(envelope[]) }
+//   Server → Client:  { type: "UPDATE",   data: JSON.stringify(envelope[]) }
+//   Client → Server:  JSON.stringify(envelope[])   (array of CRDT envelopes)
 
-wss.on('connection', (ws) => {
-    ws.on('message', (data) => {
-        const payload = data.toString();
-        wss.clients.forEach(client => {
-            if (client !== ws && client.readyState === 1 /* OPEN */) {
-                client.send(payload);
-            }
+const CRDT_PORT = 8002;
+const crdtServer = http.createServer((_req, res) => { res.writeHead(404); res.end(); });
+const wss = new WebSocketServer({ noServer: true });
+
+/**
+ * Per-room state:
+ *   peers    – Set of connected WebSockets
+ *   snapshot – All envelopes ever received, used to hydrate new joiners
+ * @type {Map<string, { peers: Set<import('ws').WebSocket>, snapshot: string[] }>}
+ */
+const rooms = new Map();
+
+crdtServer.on('upgrade', (req, socket, head) => {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+        const room = req.url ?? '/';
+
+        if (!rooms.has(room)) rooms.set(room, { peers: new Set(), snapshot: [] });
+        const { peers, snapshot } = rooms.get(room);
+        peers.add(ws);
+
+        // Hydrate the new client with everything the room knows so far.
+        const snapshotMsg = JSON.stringify({ type: 'SNAPSHOT', data: JSON.stringify(snapshot) });
+        ws.send(snapshotMsg);
+
+        ws.on('message', (data) => {
+            let envelopes;
+            try { envelopes = JSON.parse(data.toString()); } catch { return; }
+            if (!Array.isArray(envelopes)) return;
+
+            // Persist to snapshot so future joiners get a full picture.
+            snapshot.push(...envelopes);
+
+            // Broadcast as UPDATE to every other peer in the room.
+            const updateMsg = JSON.stringify({ type: 'UPDATE', data: JSON.stringify(envelopes) });
+            peers.forEach(client => {
+                if (client !== ws && client.readyState === 1 /* OPEN */) {
+                    client.send(updateMsg);
+                }
+            });
+        });
+
+        ws.on('close', () => {
+            peers.delete(ws);
+            // Keep snapshot alive even when room is empty so state is preserved.
         });
     });
 });
 
-console.log(`🔄 CRDT relay server on ws://localhost:${CRDT_PORT}`);
+crdtServer.listen(CRDT_PORT, () => {
+    console.log(`🔄 CRDT relay server on ws://localhost:${CRDT_PORT}`);
+});

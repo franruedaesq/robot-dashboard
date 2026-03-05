@@ -13,16 +13,22 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@crdt-sync/core": "^0.3.2",
-    "@crdt-sync/react": "^0.3.2",
+    "@crdt-sync/core": "^0.3.4",
+    "@crdt-sync/react": "^0.3.4",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@react-three/rapier": "^2.2.0",
+    "@spatial-engine/core": "^0.0.4",
+    "@spatial-engine/react": "^0.0.4",
+    "@spatial-engine/three": "^0.0.4",
+    "@tf-engine/core": "^2.0.0-beta.2",
+    "@tf-engine/react": "^2.0.0-beta.1",
+    "@tf-engine/three": "^2.0.0-beta.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "roslib": "^2.0.1",
-    "tf-engine": "^1.0.0",
     "three": "^0.183.1",
+    "ts-trajectory": "^0.2.0-beta.0",
     "urdf-loader": "^0.12.6",
     "ws": "^8.19.0"
   },
@@ -45,6 +51,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "vite": "^5.4.21",
+    "vite-plugin-wasm": "^3.5.0",
     "vitest": "^4.0.18"
   }
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { BufferedTFTree, Transform, Vec3 } from 'tf-engine';
+import { BufferedTFTree, Transform, Vec3 } from '@tf-engine/core';
 
 describe('TF Engine Integration', () => {
     let tfTree: BufferedTFTree;
